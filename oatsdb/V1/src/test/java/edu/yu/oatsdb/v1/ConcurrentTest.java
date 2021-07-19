@@ -30,7 +30,7 @@ public class ConcurrentTest {
     public void before() throws InstantiationException, SystemException, NotSupportedException, RollbackException {
         db = OATSDBType.dbmsFactory(OATSDBType.V1);
         txMgr = OATSDBType.txMgrFactory(OATSDBType.V1);
-        txMgr.begin();
+        txMgr.begin() ;
         objectMap = db.createMap("obj", Object.class, Object.class);
         objectMap2 = db.createMap("obj2", Object.class, Object.class);
         txMgr.commit();
