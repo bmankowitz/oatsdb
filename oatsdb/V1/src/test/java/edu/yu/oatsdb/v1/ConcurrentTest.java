@@ -19,26 +19,42 @@ public class ConcurrentTest {
     Map<Object, Object> objectMap;
     Map<Object, Object> objectMap2;
 
+    /**This initializer method creates the OATS database and Transaction Manager,
+     * as well as creating three different empty maps.
+     * @throws InstantiationException
+     * @throws SystemException
+     * @throws NotSupportedException
+     * @throws RollbackException
+     */
     @Before
     public void before() throws InstantiationException, SystemException, NotSupportedException, RollbackException {
         db = OATSDBType.dbmsFactory(OATSDBType.V1);
         txMgr = OATSDBType.txMgrFactory(OATSDBType.V1);
-        //i=0;
         txMgr.begin();
-        gradeDetail = db.createMap("grades",Character.class, String.class);
-        objectMap = db.createMap("obj",Object.class, Object.class);
-        objectMap2 = db.createMap("obj2",Object.class, Object.class);
+        objectMap = db.createMap("obj", Object.class, Object.class);
+        objectMap2 = db.createMap("obj2", Object.class, Object.class);
         txMgr.commit();
+
+    }
+    @After
+    public void after(){
+        //TODO: Create a clear method that will destroy the database and transactions
     }
 
 
-    class SetMapObj implements Runnable {
+    class SetMapObj<K,V> implements Runnable {
         final String name;
-        final Object key;
-
-        public SetMapObj(String name, Object key) {
-            this.name = name;
+        final K key;
+        final V value;
+        /**
+         * @param mapName Name of the "map" (SQL table)
+         * @param key The key. Must be of type Object
+         * @param value The value. Must be of type Object
+         */
+        public SetMapObj(String mapName, K key, V value) {
+            this.name = mapName;
             this.key = key;
+            this.value = value;
         }
 
         @Override
@@ -46,7 +62,7 @@ public class ConcurrentTest {
             try {
                 txMgr.begin();
                 objectMap = db.getMap(name, Object.class, Object.class);
-                objectMap.put(key, "Set");
+                objectMap.put(key, value);
                 txMgr.commit();
             } catch (NotSupportedException | SystemException | RollbackException e) {
                 e.printStackTrace();
@@ -55,12 +71,12 @@ public class ConcurrentTest {
 
         }
     }
-    class GetMapObj implements Runnable {
-        final String name;
+    class GetMapObj<K> implements Runnable {
+        final String mapName;
         final Object key;
 
-        public GetMapObj(String name, Object key) {
-            this.name = name;
+        public GetMapObj(String mapName, Object key) {
+            this.mapName = mapName;
             this.key = key;
         }
 
@@ -68,7 +84,7 @@ public class ConcurrentTest {
         public void run() {
             try {
                 txMgr.begin();
-                objectMap = db.getMap(name, Object.class, Object.class);
+                objectMap = db.getMap(mapName, Object.class, Object.class);
                 objectMap.get(key);
                 txMgr.commit();
             } catch (NotSupportedException | SystemException | RollbackException e) {
@@ -78,14 +94,13 @@ public class ConcurrentTest {
 
         }
     }
-    private DBTable<Integer,Integer> counter;
 
     @Test
-    public void basicNonOverlappingPut() throws SystemException, NotSupportedException, RollbackException, ExecutionException, InterruptedException {
+    public void basicNoConflictPut() throws SystemException, NotSupportedException, RollbackException, ExecutionException, InterruptedException {
         int MY_THREADS = 2;
         ExecutorService executor = Executors.newFixedThreadPool(MY_THREADS);
-        Runnable addA = new SetMapObj("obj", 'A');
-        Runnable addB = new SetMapObj("obj", 'B');
+        Runnable addA = new SetMapObj("obj", 'A', "Set");
+        Runnable addB = new SetMapObj("obj", 'B', "Set");
         Future<Void> future = (Future<Void>) executor.submit(addA);
         Future<Void> future1 = (Future<Void>) executor.submit(addB);
         executor.shutdown();
@@ -102,11 +117,125 @@ public class ConcurrentTest {
         txMgr.commit();
     }
     @Test
-    public void testNonOverlappingPutRepeating100000() throws SystemException, NotSupportedException, RollbackException, InterruptedException, ExecutionException {
-        for(int i = 0; i < 20000; i++){
-            basicNonOverlappingPut();
-            //Thread.sleep(5);
+    public void basicNoConflictPutRepeating() throws SystemException, NotSupportedException, RollbackException, InterruptedException, ExecutionException {
+        for(int i = 0; i < 20000; i++) basicNoConflictPut();
+    }
+    @Test
+    public void NSimultaneousNoConflictPutSameMap() throws SystemException, NotSupportedException, RollbackException, ExecutionException, InterruptedException {
+        int MY_THREADS = 2500;
+        int NUM_TIMES = 2500;
+        ExecutorService executor = Executors.newFixedThreadPool(MY_THREADS);
+        ArrayList<Future<Void>> futures = new ArrayList<>();
+        for (int i = 0; i < NUM_TIMES; i++) {
+            Runnable setI = new SetMapObj("obj", i, "Set");
+            futures.add((Future<Void>) executor.submit(setI));
         }
+        executor.shutdown();
+        // Wait until all threads are finish
+        while (!executor.isTerminated()) {}
+        System.out.println("\nFinished all threads");
+        for(Future<Void> future : futures){
+            future.get();
+        }
+        for (int i = 0; i < NUM_TIMES; i++) {
+            txMgr.begin();
+            assertEquals("Set", db.getMap("obj", Object.class, Object.class).get(i));
+            txMgr.commit();
+        }
+    }
+    @Test
+    public void NSimultaneousNoConflictPutSeparateMaps() throws SystemException, NotSupportedException, RollbackException, ExecutionException, InterruptedException {
+        int MY_THREADS = 2500;
+        int NUM_TIMES = 2500;
+        ExecutorService executor = Executors.newFixedThreadPool(MY_THREADS);
+        ArrayList<Future<Void>> futures = new ArrayList<>();
+        for (int i = 0; i < NUM_TIMES; i++) {
+            Runnable setI = new SetMapObj("obj", i, "Set");
+            Runnable setI2 = new SetMapObj("obj2", i, "Set");
+            futures.add((Future<Void>) executor.submit(setI));
+            futures.add((Future<Void>) executor.submit(setI2));
+        }
+        executor.shutdown();
+        // Wait until all threads are finish
+        while (!executor.isTerminated()) {}
+        System.out.println("\nFinished all threads");
+        for(Future<Void> future : futures){
+            future.get();
+        }
+        for (int i = 0; i < NUM_TIMES; i++) {
+            txMgr.begin();
+            assertEquals("Set", db.getMap("obj", Object.class, Object.class).get(i));
+            assertEquals("Set", db.getMap("obj2", Object.class, Object.class).get(i));
+            txMgr.commit();
+        }
+    }
+
+    @Test
+    public void SimultaneousFasterThanSequentialPut() throws SystemException, NotSupportedException, RollbackException, ExecutionException, InterruptedException {
+        int MY_THREADS = 2000;
+        int NUM_TIMES = 2000;
+        ExecutorService executor = Executors.newFixedThreadPool(MY_THREADS);
+        ExecutorService singleThread = Executors.newSingleThreadExecutor();
+        ArrayList<Future<Void>> futures = new ArrayList<>();
+        double simulStart = System.nanoTime();
+        for (int i = 0; i < NUM_TIMES; i++) {
+            Runnable setI = new SetMapObj("obj", i, "Set");
+            futures.add((Future<Void>) executor.submit(setI));
+        }
+        executor.shutdown();
+        while (!executor.isTerminated()) {}
+        double simulEnd = System.nanoTime();
+        //now for single thread:
+        double seqStart = System.nanoTime();
+        for (int i = NUM_TIMES; i < NUM_TIMES*2; i++) {
+            Runnable setI = new SetMapObj("obj", i, "Set");
+            futures.add((Future<Void>) singleThread.submit(setI));
+        }
+        double seqEnd = System.nanoTime();
+        for(Future<Void> future : futures){
+            future.get();
+        }
+        for (int i = 0; i < NUM_TIMES*2; i++) {
+            txMgr.begin();
+            assertEquals("Set", db.getMap("obj", Object.class, Object.class).get(i));
+            txMgr.commit();
+        }
+        double simulTime = (simulEnd-simulStart);
+        double seqTime = (seqEnd-seqStart);
+        System.out.println("Finished simultaneous threads in: " + simulTime);
+        System.out.println("Sequential put took: " + seqTime);
+        assertTrue(simulTime * 50 < seqEnd);
+    }
+    @Test
+    public void SimultaneousFasterThanSequentialGet() throws SystemException, NotSupportedException, RollbackException, ExecutionException, InterruptedException {
+        int MY_THREADS = 2000;
+        int NUM_TIMES = 2000;
+        ExecutorService executor = Executors.newFixedThreadPool(MY_THREADS);
+        ExecutorService singleThread = Executors.newSingleThreadExecutor();
+        ArrayList<Future<Void>> futures = new ArrayList<>();
+        double simulStart = System.nanoTime();
+        for (int i = 0; i < NUM_TIMES; i++) {
+            Runnable getI = new GetMapObj("obj", i);
+            futures.add((Future<Void>) executor.submit(getI));
+        }
+        executor.shutdown();
+        while (!executor.isTerminated()) {}
+        double simulEnd = System.nanoTime();
+        //now for single thread:
+        double seqStart = System.nanoTime();
+        for (int i = NUM_TIMES; i < NUM_TIMES*2; i++) {
+            Runnable getI = new GetMapObj("obj", i);
+            futures.add((Future<Void>) singleThread.submit(getI));
+        }
+        double seqEnd = System.nanoTime();
+        for(Future<Void> future : futures){
+            future.get();
+        }
+        double simulTime = (simulEnd-simulStart);
+        double seqTime = (seqEnd-seqStart);
+        System.out.println("Finished simultaneous threads in: " + simulTime);
+        System.out.println("Sequential put took: " + seqTime);
+        assertTrue(simulTime * 50 < seqEnd);
     }
     @Test
     public void NSimultaneousThreadsMultipleTxPerThread() throws SystemException, NotSupportedException, RollbackException, ExecutionException, InterruptedException {
@@ -156,123 +285,6 @@ public class ConcurrentTest {
         }
     }
 
-    @Test
-    public void NSimultaneousNonOverlappingPut() throws SystemException, NotSupportedException, RollbackException, ExecutionException, InterruptedException {
-        int MY_THREADS = 2500;
-        int NUM_TIMES = 2500;
-        ExecutorService executor = Executors.newFixedThreadPool(MY_THREADS);
-        ArrayList<Future<Void>> futures = new ArrayList<>();
-        for (int i = 0; i < NUM_TIMES; i++) {
-            Runnable setI = new SetMapObj("obj", i);
-            futures.add((Future<Void>) executor.submit(setI));
-        }
-        executor.shutdown();
-        // Wait until all threads are finish
-        while (!executor.isTerminated()) {}
-        System.out.println("\nFinished all threads");
-        for(Future<Void> future : futures){
-            future.get();
-        }
-        for (int i = 0; i < NUM_TIMES; i++) {
-            txMgr.begin();
-            assertEquals("Set", db.getMap("obj", Object.class, Object.class).get(i));
-            txMgr.commit();
-        }
-    }
-    @Test
-    public void NSimultaneousNonOverlappingPutSeparateMaps() throws SystemException, NotSupportedException, RollbackException, ExecutionException, InterruptedException {
-        int MY_THREADS = 2500;
-        int NUM_TIMES = 2500;
-        ExecutorService executor = Executors.newFixedThreadPool(MY_THREADS);
-        ArrayList<Future<Void>> futures = new ArrayList<>();
-        for (int i = 0; i < NUM_TIMES; i++) {
-            Runnable setI = new SetMapObj("obj", i);
-            Runnable setI2 = new SetMapObj("obj2", i);
-            futures.add((Future<Void>) executor.submit(setI));
-            futures.add((Future<Void>) executor.submit(setI2));
-        }
-        executor.shutdown();
-        // Wait until all threads are finish
-        while (!executor.isTerminated()) {}
-        System.out.println("\nFinished all threads");
-        for(Future<Void> future : futures){
-            future.get();
-        }
-        for (int i = 0; i < NUM_TIMES; i++) {
-            txMgr.begin();
-            assertEquals("Set", db.getMap("obj", Object.class, Object.class).get(i));
-            assertEquals("Set", db.getMap("obj2", Object.class, Object.class).get(i));
-            txMgr.commit();
-        }
-    }
-
-    @Test
-    public void SimultaneousFasterThanSequentialPut() throws SystemException, NotSupportedException, RollbackException, ExecutionException, InterruptedException {
-        int MY_THREADS = 2000;
-        int NUM_TIMES = 2000;
-        ExecutorService executor = Executors.newFixedThreadPool(MY_THREADS);
-        ExecutorService singleThread = Executors.newSingleThreadExecutor();
-        ArrayList<Future<Void>> futures = new ArrayList<>();
-        double simulStart = System.nanoTime();
-        for (int i = 0; i < NUM_TIMES; i++) {
-            Runnable setI = new SetMapObj("obj", i);
-            futures.add((Future<Void>) executor.submit(setI));
-        }
-        executor.shutdown();
-        while (!executor.isTerminated()) {}
-        double simulEnd = System.nanoTime();
-        //now for single thread:
-        double seqStart = System.nanoTime();
-        for (int i = NUM_TIMES; i < NUM_TIMES*2; i++) {
-            Runnable setI = new SetMapObj("obj", i);
-            futures.add((Future<Void>) singleThread.submit(setI));
-        }
-        double seqEnd = System.nanoTime();
-        for(Future<Void> future : futures){
-            future.get();
-        }
-        for (int i = 0; i < NUM_TIMES*2; i++) {
-            txMgr.begin();
-            assertEquals("Set", db.getMap("obj", Object.class, Object.class).get(i));
-            txMgr.commit();
-        }
-        double simulTime = (simulEnd-simulStart);
-        double seqTime = (seqEnd-seqStart);
-        System.out.println("Finished simultaneous threads in: " + simulTime);
-        System.out.println("Sequential put took: " + seqTime);
-        assertTrue(simulTime * 50 < seqEnd);
-    }
-    @Test
-    public void SimultaneousFasterThanSequentialGet() throws SystemException, NotSupportedException, RollbackException, ExecutionException, InterruptedException {
-        int MY_THREADS = 2000;
-        int NUM_TIMES = 2000;
-        ExecutorService executor = Executors.newFixedThreadPool(MY_THREADS);
-        ExecutorService singleThread = Executors.newSingleThreadExecutor();
-        ArrayList<Future<Void>> futures = new ArrayList<>();
-        double simulStart = System.nanoTime();
-        for (int i = 0; i < NUM_TIMES; i++) {
-            Runnable getI = new GetMapObj("obj", i);
-            futures.add((Future<Void>) executor.submit(getI));
-        }
-        executor.shutdown();
-        while (!executor.isTerminated()) {}
-        double simulEnd = System.nanoTime();
-        //now for single thread:
-        double seqStart = System.nanoTime();
-        for (int i = NUM_TIMES; i < NUM_TIMES*2; i++) {
-            Runnable getI = new GetMapObj("obj", i);
-            futures.add((Future<Void>) singleThread.submit(getI));
-        }
-        double seqEnd = System.nanoTime();
-        for(Future<Void> future : futures){
-            future.get();
-        }
-        double simulTime = (simulEnd-simulStart);
-        double seqTime = (seqEnd-seqStart);
-        System.out.println("Finished simultaneous threads in: " + simulTime);
-        System.out.println("Sequential put took: " + seqTime);
-        assertTrue(simulTime * 50 < seqEnd);
-    }
     @Test
     public void txProgressCommitVisibleToOtherThread() throws SystemException, NotSupportedException, RollbackException, ExecutionException, InterruptedException {
         int MY_THREADS = 2;
