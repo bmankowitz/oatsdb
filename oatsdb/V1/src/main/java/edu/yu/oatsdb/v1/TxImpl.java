@@ -11,7 +11,8 @@ public class TxImpl implements Tx, Serializable {
     public TxImpl(Thread thread){
         txThread = thread;
     }
-    //TODO: Deprecate this
+
+    @Deprecated
     public TxImpl(){
 
     }

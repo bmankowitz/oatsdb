@@ -46,6 +46,7 @@ public class Globals {
         }
 
     }
+    @Deprecated
     protected static void commitAll(){
         DBTable temp;
         for(String name : nameTables.keySet() ){
@@ -54,6 +55,7 @@ public class Globals {
             nameTables.replace(name, temp);
         }
     }
+    @Deprecated
     protected static void revertAll(){
         DBTable temp;
         for(String name : nameTables.keySet() ){

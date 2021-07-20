@@ -145,8 +145,9 @@ public class ConcurrentTest {
     }
     @Test
     public void NSimultaneousNoConflictPutSeparateMaps() throws SystemException, NotSupportedException, RollbackException, ExecutionException, InterruptedException {
-        int MY_THREADS = 2500;
-        int NUM_TIMES = 2500;
+        // FIXME: 7/19/2021 FAILS SOMETIMES. UNCLEAR WHY
+        int MY_THREADS = 10000;
+        int NUM_TIMES = 10000;
         ExecutorService executor = Executors.newFixedThreadPool(MY_THREADS);
         ArrayList<Future<Void>> futures = new ArrayList<>();
         for (int i = 0; i < NUM_TIMES; i++) {

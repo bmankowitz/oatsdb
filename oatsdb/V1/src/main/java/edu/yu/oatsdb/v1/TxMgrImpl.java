@@ -11,7 +11,8 @@ public enum TxMgrImpl implements TxMgr {
         //incoming thread: TODO: FIX THIS FOR MULTITHREADING
         Thread incoming = Thread.currentThread();
         if(Globals.threadTxMap.containsKey(incoming)){
-            throw new NotSupportedException("This thread is already in a different transaction. No nested transactions!");
+            throw new NotSupportedException("This thread ( "+incoming.getName()+" ) " +
+                    "is already in a different transaction. No nested transactions!");
         }
         TxImpl newTx = new TxImpl();
         newTx.setStatus(TxStatus.NO_TRANSACTION);

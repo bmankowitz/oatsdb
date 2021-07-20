@@ -19,6 +19,7 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
     private volatile HashSet<K> lockedKeys = new HashSet<>();
     private final ThreadLocal<HashMap<K, methodType>> keysInTx = ThreadLocal.withInitial(() -> new HashMap<>());
     private final ThreadLocal<HashMap<K, V>> shadow = ThreadLocal.withInitial(() -> new HashMap<>());
+    @Deprecated
     private final ThreadLocal<String> error = new ThreadLocal<String>();
     private String tableName;
     private TxStatus status;
@@ -44,7 +45,7 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
             if(keysInTx.get().isEmpty()) System.out.println("EMPTY KEYS??");
 
             //if the shadow table is not empty, there is an incomplete Tx somewhere. Or some error
-            //throw new RuntimeException(error.get());
+            throw new RuntimeException(error.get());
             //TODO: should we update the shadow db?
         }
         shadow.set(new HashMap<>(official));
@@ -97,6 +98,7 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
             }
         }
         //error with these keys. unlock and dump them
+        //TODO: isn't this for a Rollback?
         else{
             for(K key : keysInTx.get().keySet()){
                 lockedKeys.remove(key);
@@ -181,7 +183,8 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
     public V put(K key, V value) {
         V retVal;
         //TODO: implement appropriate safety checks (ex. current != null, etc)
-        if(Globals.threadTxMap.get(Thread.currentThread()) == null) throw new ClientNotInTxException("Not in Tx");
+        if(Globals.threadTxMap.get(Thread.currentThread()) == null) throw new ClientNotInTxException("This thread" +
+                "is not currently in a transaction" + Thread.currentThread());
         if(key == null) throw new IllegalArgumentException("Null is not a valid key");
         if(lockedKeys.contains(key) && !keysInTx.get().containsKey(key)){
             keyLocked((K) key);
