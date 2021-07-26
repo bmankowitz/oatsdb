@@ -2,6 +2,8 @@ package edu.yu.oatsdb.v1;
 
 import edu.yu.oatsdb.base.*;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.junit.*;
 
 import java.util.concurrent.*;
@@ -12,12 +14,13 @@ import static org.junit.Assert.*;
 
 
 public class ConcurrentTest {
-    DBMS db;
+    ConfigurableDBMS db;
     TxMgr txMgr;
     int i;
     Map<Character, String> gradeDetail;
     Map<Object, Object> objectMap;
     Map<Object, Object> objectMap2;
+    private final static Logger logger = LogManager.getLogger(ConcurrentTest.class);
 
     /**This initializer method creates the OATS database and Transaction Manager,
      * as well as creating three different empty maps.
@@ -28,7 +31,7 @@ public class ConcurrentTest {
      */
     @Before
     public void before() throws InstantiationException, SystemException, NotSupportedException, RollbackException {
-        db = OATSDBType.dbmsFactory(OATSDBType.V1);
+        db = (ConfigurableDBMS) OATSDBType.dbmsFactory(OATSDBType.V1);
         txMgr = OATSDBType.txMgrFactory(OATSDBType.V1);
         txMgr.begin() ;
         objectMap = db.createMap("obj", Object.class, Object.class);
@@ -122,6 +125,7 @@ public class ConcurrentTest {
     }
     @Test
     public void NSimultaneousNoConflictPutSameMap() throws SystemException, NotSupportedException, RollbackException, ExecutionException, InterruptedException {
+        // FIXME: 7/20/2021 STILL OCCASIONALLY FAILS
         int MY_THREADS = 2500;
         int NUM_TIMES = 2500;
         ExecutorService executor = Executors.newFixedThreadPool(MY_THREADS);
@@ -354,7 +358,7 @@ public class ConcurrentTest {
     }
 
     @Test
-    public void txCommitProgressVisibleToOtherThreadMultipleMaps() throws SystemException, NotSupportedException, RollbackException, ExecutionException, InterruptedException {
+    public void txProgressInvisibleToOtherThreadMultipleMaps() throws SystemException, NotSupportedException, RollbackException, ExecutionException, InterruptedException {
         int MY_THREADS = 2;
         ExecutorService executor = Executors.newFixedThreadPool(MY_THREADS);
         Runnable addA = new Runnable() {
@@ -362,16 +366,18 @@ public class ConcurrentTest {
             public void run() {
                 try {
                     txMgr.begin();
-                    System.out.println("Setting A");
+                    logger.info("Setting A");
                     objectMap = db.getMap("obj", Object.class, Object.class);
                     objectMap2 = db.getMap("obj2", Object.class, Object.class);
                     objectMap.put('A', "Set");
                     objectMap2.put('A',"Set");
-                    System.out.println("Set A");
-                    System.out.println("Sleeping");
-                    Thread.sleep(65);
-                    System.out.println("Awake");
+                    logger.info("Set A");
+                    logger.info("About to sleep");
+                    Thread.sleep(300);
+                    logger.info("Awake");
+                    logger.info("Committing A");
                     txMgr.commit();
+                    logger.info("Committed A");
                 } catch (NotSupportedException | SystemException | RollbackException | InterruptedException e) {
                     e.printStackTrace();
                     throw new RuntimeException();
@@ -382,14 +388,14 @@ public class ConcurrentTest {
             @Override
             public void run() {
                 try {
-                    Thread.sleep(2);
+                    Thread.sleep(20);
                     txMgr.begin();
-                    System.out.println("Checking A");
+                    logger.info("Checking A");
                     assertEquals("Set", db.getMap("obj", Object.class, Object.class).get('A'));
                     assertEquals("Set", db.getMap("obj2", Object.class, Object.class).get('A'));
-                    System.out.println("Checked A");
+                    logger.info("Committing B");
                     txMgr.commit();
-                    Thread.sleep(50);
+                    logger.info("Committed B");
                 } catch (NotSupportedException | SystemException | RollbackException | InterruptedException e) {
                     e.printStackTrace();
                     throw new RuntimeException();
@@ -423,7 +429,7 @@ public class ConcurrentTest {
         }
         for (int i = 0; i < 150; i++) {
             System.out.println("Run: "+ i);
-            txCommitProgressVisibleToOtherThreadMultipleMaps();
+            txProgressInvisibleToOtherThreadMultipleMaps();
         }
     }
 
@@ -622,6 +628,60 @@ public class ConcurrentTest {
             }
         }
         assertEquals(10, exceptions);
+    }
+    @Test
+    public void ensureLockedKeyIsBlocking() throws SystemException, NotSupportedException, RollbackException, ExecutionException, InterruptedException {
+        int MY_THREADS = 2;
+        ExecutorService executor = Executors.newFixedThreadPool(MY_THREADS);
+        Runnable addA = new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    txMgr.begin();
+                    objectMap.put("q", "Set");
+                    long startTime = System.currentTimeMillis();
+                    logger.info("Set a at {}", startTime);
+                    while (System.currentTimeMillis() - startTime < 500){}
+                    txMgr.commit();
+                    logger.info("committed a");
+
+                } catch (NotSupportedException | SystemException | RollbackException e) {
+                    e.printStackTrace();
+                    throw new RuntimeException();
+                }
+            }
+        };
+        Runnable addB = new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    Thread.sleep(20);
+                    txMgr.begin();
+                    logger.info("Checking A");
+                    double start = System.currentTimeMillis();
+                    logger.info("Should now be waiting...");
+                    assertEquals("Set", objectMap.get("q"));
+                    double end = System.currentTimeMillis();
+                    logger.info("Checked A. Now checking time:");
+                    assertTrue( end - start < 1750);
+                    txMgr.commit();
+                    logger.info("Done!");
+                } catch (NotSupportedException | SystemException | RollbackException | InterruptedException e) {
+                    e.printStackTrace();
+                    throw new RuntimeException();
+                }
+            }
+        };
+        Future<Void> future = (Future<Void>) executor.submit(addA);
+        Future<Void> future1 = (Future<Void>) executor.submit(addB);
+        // Wait until all threads are finish
+        executor.shutdown();
+        while (!executor.isTerminated()) {}
+        System.out.println("\nFinished all threads");
+
+        future.get();
+        future1.get();
+
     }
     @Test//(expected = ClientTxRolledBackException.class)
     public void TxRollbackTimeoutCorrectlyRollsBack() throws Throwable {

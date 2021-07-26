@@ -1,12 +1,13 @@
 package edu.yu.oatsdb.v1;
 
 import edu.yu.oatsdb.base.ClientNotInTxException;
+import edu.yu.oatsdb.base.OATSDBType;
 import edu.yu.oatsdb.base.TxStatus;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
-import java.io.Serializable;
+import java.io.*;
 import java.util.*;
-import java.util.concurrent.*;
-import java.util.concurrent.locks.*;
 
 public class DBTable<K, V> implements Serializable, Map<K, V> {
     enum methodType{
@@ -15,45 +16,54 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
 
     //plan: have a hashmap of <K, HashSet<Thread>>. whenever a thread is waiting, set add it to the hashset
     //when that key is removed, send an interrupt to that thread. YAY JAVA!
-    private volatile HashMap<K, V> official = new HashMap<K, V>(); //The single, primary hashmap
-    private volatile HashSet<K> lockedKeys = new HashSet<>();
-    private final ThreadLocal<HashMap<K, methodType>> keysInTx = ThreadLocal.withInitial(() -> new HashMap<>());
-    private final ThreadLocal<HashMap<K, V>> shadow = ThreadLocal.withInitial(() -> new HashMap<>());
-    @Deprecated
-    private final ThreadLocal<String> error = new ThreadLocal<String>();
-    private String tableName;
-    private TxStatus status;
+    private final HashMap<K, V> official = new HashMap<K, V>(); //The single, primary hashmap
+    private final HashSet<K> lockedKeys = new HashSet<>();
+    private final ThreadLocal<HashMap<K, methodType>> keysInTx = ThreadLocal.withInitial(HashMap::new);
+    private final ThreadLocal<HashMap<K, V>> shadow = ThreadLocal.withInitial(HashMap::new);
+    private boolean dirty = false;
+    protected String tableName;
     protected Class<K> keyClass;
     protected Class<V> valueClass;
-    protected HashMap<K, V> getOfficial(){
-        return official;
-    }
 
-    protected void setName(String name){
-        tableName = name;
+    private final static Logger logger = LogManager.getLogger(DBTable.class);
+
+
+    private V serializeV(V value) {
+        //https://howtodoinjava.com/java/serialization/how-to-do-deep-cloning-using-in-memory-serialization-in-java/
+
+        try {
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            ObjectOutputStream oos = new ObjectOutputStream(bos);
+            oos.writeObject(value);
+            ByteArrayInputStream bis = new ByteArrayInputStream(bos.toByteArray());
+            ObjectInputStream in = new ObjectInputStream(bis);
+            V retVal = (V) in.readObject();
+            return retVal;
+        } catch (IOException | ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+        throw new RuntimeException("Failed to serialize");
     }
     protected String getName(){
         return tableName;
     }
-    protected synchronized void startTx(){
+    protected void initializeTable(){
         //starting a tx
         if(!shadow.get().isEmpty() || !keysInTx.get().isEmpty()){
-            error.set("There is an incomplete Tx somewhere: "
+            //if the shadow table is not empty, there is an incomplete Tx somewhere. Or some other error. Either way,
+            //this is a catastrophic failure. Abort
+            if(shadow.get().isEmpty()) logger.error("EMPTY SHADOW??");
+            if(keysInTx.get().isEmpty()) logger.error("EMPTY KEYS??");
+            throw new RuntimeException("There is an incomplete Tx somewhere: "
                     + "\nShadowArray:" + shadow.get() + "ShadowisEmpty: " + shadow.get().isEmpty()
                     + "\nkeysInTx: " + keysInTx + "keysIsEmpty: " + keysInTx.get().isEmpty());
-            if(shadow.get().isEmpty()) System.out.println("EMPTY SHADOW??");
-            if(keysInTx.get().isEmpty()) System.out.println("EMPTY KEYS??");
-
-            //if the shadow table is not empty, there is an incomplete Tx somewhere. Or some error
-            throw new RuntimeException(error.get());
-            //TODO: should we update the shadow db?
         }
-        shadow.set(new HashMap<>(official));
     }
 
     protected void commitCurrentTable(){
         //committing a tx
         unlockAndSetKeys(TxStatus.COMMITTING);
+        dirty = true;
     }
 
     protected void rollbackCurrentTable(){
@@ -61,123 +71,102 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
         unlockAndSetKeys(TxStatus.ROLLING_BACK);
     }
 
-    private void addKeyToTx(K key, methodType method){
-        System.out.println(Thread.currentThread() + "locking: " + key);
-        HashMap<K, methodType> tempKeys = keysInTx.get();
-        tempKeys.put(key, method);
-        keysInTx.set(tempKeys);
+    private  void addKeyToTx(K key, methodType method){
+        logger.debug(Thread.currentThread() + "locking: " + key);
+        keysInTx.get().put(key,method);
         lockedKeys.add(key);
     }
-    private synchronized void unlockAndSetKeys(TxStatus status){
+    private void unlockAndSetKeys(TxStatus status){
         //for commit/rollback: remove the lock on these keys
         //for committing:
-        if(status == TxStatus.COMMITTING) {
-            for (Map.Entry<K, methodType> entry : keysInTx.get().entrySet()) {
+        for (Map.Entry<K, methodType> entry : keysInTx.get().entrySet()) {
+                logger.debug(Thread.currentThread() + "unlocking: " + entry.getKey());
+            synchronized (this) {
                 switch (entry.getValue()) {
                     case GET:
                         //do nothing except unlock
-                        System.out.println(Thread.currentThread() + "unlocking: " + entry.getKey());
-                        lockedKeys.remove(entry.getKey());
-                        System.out.println(Thread.currentThread() + "unlocked: " + entry.getKey());
                         break;
                     case PUT:
-                        lockedKeys.remove(entry.getKey());
-                        official.put(entry.getKey(), shadow.get().get(entry.getKey()));
-                        System.out.println(Thread.currentThread() + "unlocking: " + entry.getKey());
-                        lockedKeys.remove(entry.getKey());
-                        System.out.println("unlocked: " + entry.getKey());
+                        //if this is a commit, do the commit
+                        if (status == TxStatus.COMMITTING)
+                            official.put(entry.getKey(), shadow.get().get(entry.getKey()));
                         break;
                     case REMOVE:
-                        lockedKeys.remove(entry.getKey());
-                        official.remove(entry.getKey());
-                        System.out.println(Thread.currentThread() + "unlocking: " + entry.getKey());
-                        lockedKeys.remove(entry.getKey());
-                        System.out.println("unlocked: " + entry.getKey());
+                        //if this is a commit, do the commit
+                        if (status == TxStatus.COMMITTING) official.remove(entry.getKey());
                         break;
                 }
+                lockedKeys.remove(entry.getKey());
             }
+                logger.debug(Thread.currentThread() + "unlocked: " + entry.getKey());
         }
-        //error with these keys. unlock and dump them
-        //TODO: isn't this for a Rollback?
-        else{
-            for(K key : keysInTx.get().keySet()){
-                lockedKeys.remove(key);
-                System.out.println(Thread.currentThread() + "unlocking: " + key);
-                lockedKeys.remove(key);
-                System.out.println("unlocked: " + key);
-            }
-        }
+
         //now we need to reset shadow db and keysInTx:
-        HashMap<K, V> tempMap = shadow.get();
-        tempMap.clear();
-        shadow.set(tempMap);
         shadow.remove();
         //keysInTx:
-        HashMap<K, methodType> tempKeys = keysInTx.get();
-        tempKeys.clear();
-        keysInTx.set(tempKeys);
         keysInTx.remove();
 
 
     }
-    private void keyLocked(K key){
-        System.out.println("Waiting for key to be unlocked: " + key);
+    private void lockedKeyWait(K key){
+        logger.debug("Waiting for key to be unlocked: " + key);
 
         long startTime = System.currentTimeMillis();
         while(lockedKeys.contains(key)){
             /* Spin lock :( */
             if((System.currentTimeMillis() - startTime) >= Globals.lockingTimeout){
-                //The thread timed out.
-                System.out.println(Thread.currentThread() + ": FAILED - Timeout");
+                logger.error(Thread.currentThread() + ": FAILED - Timeout");
                 //we exceeded the timeout. Need to roll back:
                 //TODO: Find a more elegant way to do this than copy paste:
-                Thread t = Thread.currentThread();
-                TxImpl tx = Globals.threadTxMap.get(t);
-                if(!Globals.threadTxMap.containsKey(t)) {
-                    //if the thread is not already in the thread table
+                Thread currentThread = Thread.currentThread();
+                TxImpl tx = Globals.threadTxMap.get(currentThread);
+                if(!Globals.threadTxMap.containsKey(currentThread)) {
                     throw new IllegalStateException("This thread is not in a transaction");
                 }
                 tx.setStatus(TxStatus.ROLLING_BACK);
-                Globals.threadTxMap.replace(t, tx);
-                //after successfully transacting the transaction, allow this thread to add a new tx
-                Globals.revertAll();
-                tx = Globals.threadTxMap.get(t);
+                Globals.threadTxMap.replace(currentThread, tx);
+                Globals.revertThreadTables(currentThread);
                 tx.setStatus(TxStatus.ROLLEDBACK);
-                Globals.threadTxMap.replace(t, tx);
-                Globals.threadTxMap.remove(t);
-                System.out.println(Thread.currentThread() + ": FAILED - Finished Rollback. Throwing Exception");
+                Globals.threadTxMap.replace(currentThread, tx);
+                Globals.threadTxMap.remove(currentThread);
+
+
+                logger.error(Thread.currentThread() + ": FAILED - Finished Rollback. Throwing Exception");
                 throw new edu.yu.oatsdb.base.ClientTxRolledBackException("timeout exceeded");
             }
         }
-        System.out.println("Key Unlocked!: " + key);
+        logger.debug("Key Unlocked!: " + key);
         //need to update shadow value from official:
         V newValue = official.get(key);
-        HashMap<K, V> tempShadow = shadow.get();
-        tempShadow.put(key, newValue);
-        shadow.set(tempShadow);
-
-
+        shadow.get().put(key, newValue);
     }
 
     @SuppressWarnings("unchecked")
     public V get(Object key) {
         //TODO: implement appropriate safety checks (ex. current != null, etc)
         if(Globals.threadTxMap.get(Thread.currentThread()) == null) throw new ClientNotInTxException("Not in Tx");
+        //Now this is a valid thread. In case it was not added directly, add it now:
+        Globals.addToTx(this.getName(), Thread.currentThread());
+        dirty = true;
+        //if the key is locked and not by this transaction
         if(lockedKeys.contains(key) && !keysInTx.get().containsKey(key)){
-            keyLocked((K) key);
+            lockedKeyWait((K) key);
         }
+        //if the key is already in this transaction (ie it is cached in the shadow map)
         else if(keysInTx.get().containsKey(key)){
-            return shadow.get().get(key);
+            return serializeV(shadow.get().get(key));
         }
+        //if this key is not in a transaction (new use - need to add to shadow cache (like a cache miss))
         else if(!keysInTx.get().containsKey(key)){
             //we need to update this key in the shadowDB:
-            HashMap<K, V> tempShadow = shadow.get();
-            tempShadow.put((K) key, official.get(key));
-            shadow.set(tempShadow);
-            return shadow.get().get(key);
+//            HashMap<K, V> tempShadow = shadow.get();
+//            tempShadow.put((K) key, official.get(key));
+//            shadow.set(tempShadow);
+            shadow.get().put((K) key, official.get(key));
+            return serializeV(shadow.get().get(key));
         }
         addKeyToTx((K) key, methodType.GET);
-        return shadow.get().get(key);
+        return serializeV(shadow.get().get(key));
     }
 
     public V put(K key, V value) {
@@ -186,15 +175,20 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
         if(Globals.threadTxMap.get(Thread.currentThread()) == null) throw new ClientNotInTxException("This thread" +
                 "is not currently in a transaction" + Thread.currentThread());
         if(key == null) throw new IllegalArgumentException("Null is not a valid key");
+        //Now this is a valid thread. In case it was not added directly, add it now:
+        Globals.addToTx(this.getName(), Thread.currentThread());
+        dirty = true;
+        //if the key is locked and not by this transaction
         if(lockedKeys.contains(key) && !keysInTx.get().containsKey(key)){
-            keyLocked((K) key);
+            lockedKeyWait((K) key);
         }
-        //System.out.println("Putting in a new key: "+key+" from "+Thread.currentThread());
+        //now that the previously locked key is available and loaded with official value, update it;
         addKeyToTx((K) key, methodType.PUT);
-        HashMap<K, V> tempMap = shadow.get();
-        retVal = tempMap.put(key, value);
-        shadow.set(tempMap);
-        return retVal;
+//        HashMap<K, V> tempShadow = shadow.get();
+//        retVal = tempShadow.put(key, serializeV(value));
+//        shadow.set(tempShadow);
+        retVal = shadow.get().put(key, serializeV(value));
+        return serializeV(retVal);
     }
 
     @SuppressWarnings("unchecked")
@@ -202,14 +196,18 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
         V retVal;
         //TODO: implement appropriate safety checks (ex. current != null, etc)
         if(Globals.threadTxMap.get(Thread.currentThread()) == null) throw new ClientNotInTxException("Not in Tx");
+        //Now this is a valid thread. In case it was not added directly, add it now:
+        Globals.addToTx(this.getName(), Thread.currentThread());
+        dirty = true;
         if(lockedKeys.contains(key) && !keysInTx.get().containsKey(key)){
-            keyLocked((K) key);
+            lockedKeyWait((K) key);
         }
         addKeyToTx((K) key, methodType.REMOVE);
-        HashMap<K, V> tempMap = shadow.get();
-        retVal= tempMap.remove(key);
-        shadow.set(tempMap);
-        return retVal;
+//        HashMap<K, V> tempShadow = shadow.get();
+//        retVal= tempShadow.remove(key);
+//        shadow.set(tempShadow);
+        retVal = shadow.get().remove(key);
+        return serializeV(retVal);
     }
 
     //if there are uncommitted changes

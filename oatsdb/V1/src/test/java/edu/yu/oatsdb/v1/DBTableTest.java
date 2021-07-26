@@ -4,6 +4,8 @@ import edu.yu.oatsdb.base.*;
 import org.junit.Test;
 import org.junit.Before;
 import org.junit.After;
+
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.NoSuchElementException;
 
@@ -76,7 +78,7 @@ public class DBTableTest {
         txMgr.rollback();
     }
     @Test
-    public void referenceVsDatabaseIntegrity() throws InstantiationException, SystemException, NotSupportedException, RollbackException {
+    public void mapReferenceVsDatabaseIntegrity() throws InstantiationException, SystemException, NotSupportedException, RollbackException {
         txMgr.begin();
         gradeDetail.put('E', "OtherStuff");
         txMgr.commit();
@@ -84,6 +86,20 @@ public class DBTableTest {
         assertEquals(gradeDetail.get('E'),db.getMap("grades", Character.class, String.class).get('E'));
         txMgr.rollback();
     }
+    @Test
+    public void mapEntryReferenceIsStale() throws InstantiationException, SystemException, NotSupportedException, RollbackException {
+        txMgr.begin();
+        ArrayList<String> arr = new ArrayList<>();
+        arr.add("elem1");
+        Map<Character, ArrayList> map = db.createMap("arr", Character.class, ArrayList.class);
+        map.put('A', arr);
+        txMgr.commit();
+        arr.add("elem2");
+        txMgr.begin();
+        assertTrue(!map.get('A').contains("elem2"));
+        txMgr.rollback();
+    }
+
     @Test(expected = IllegalArgumentException.class)
     public void mapKeyClassNull() throws InstantiationException, SystemException, NotSupportedException, RollbackException {
         txMgr.begin();
@@ -126,6 +142,48 @@ public class DBTableTest {
         txMgr.begin();
         gradeDetail.get('A');
         gradeDetail.get('A');
+        txMgr.commit();
+    }
+    @Test
+    public void getCachesOldValue() throws InstantiationException, SystemException, NotSupportedException, RollbackException {
+        txMgr.begin();
+        gradeDetail.put('3', "FirstValue");
+        txMgr.commit();
+        txMgr.begin();
+        //now for the real test
+        assertEquals(gradeDetail.get('3'), "FirstValue");
+        gradeDetail.put('3', "SecondValue");
+        assertEquals(gradeDetail.get('3'), "SecondValue");
+        txMgr.rollback();
+        txMgr.begin();
+        assertEquals(gradeDetail.get('3'), "FirstValue");
+        txMgr.commit();
+
+    }
+
+    @Test
+    public void putIsCached() throws InstantiationException, SystemException, NotSupportedException, RollbackException {
+        txMgr.begin();
+        gradeDetail.put('9', "Hello");
+        assertEquals(gradeDetail.get('9'), "Hello");
+        txMgr.commit();
+        txMgr.begin();
+        assertEquals(gradeDetail.get('9'), "Hello");
+        txMgr.commit();
+    }
+
+    @Test
+    public void removeIsCached() throws InstantiationException, SystemException, NotSupportedException, RollbackException {
+        txMgr.begin();
+        gradeDetail.put('9', "Hello");
+        txMgr.commit();
+        txMgr.begin();
+        assertEquals(gradeDetail.get('9'), "Hello");
+        assertEquals(gradeDetail.remove('9'), "Hello");
+        assertNull(gradeDetail.get('9'));
+        txMgr.commit();
+        txMgr.begin();
+        assertNull(gradeDetail.get('9'));
         txMgr.commit();
     }
 

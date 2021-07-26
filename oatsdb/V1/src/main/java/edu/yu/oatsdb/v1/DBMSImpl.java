@@ -8,7 +8,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.NoSuchElementException;
 
-public enum DBMSImpl implements DBMS {
+public enum DBMSImpl implements DBMS, ConfigurableDBMS {
     Instance;
     //private HashMap<String, DBTable> tables = new HashMap<String, DBTable>();
 
@@ -44,7 +44,7 @@ public enum DBMSImpl implements DBMS {
         }
 
 
-        Globals.addToTx(name);
+        Globals.addToTx(name, Thread.currentThread());
         return Globals.getTable(name);
     }
 
@@ -83,11 +83,12 @@ public enum DBMSImpl implements DBMS {
         //set the object's types:
         table.keyClass = keyClass;
         table.valueClass = valueClass;
+        table.tableName = name;
         Globals.addNameTable(name, table);
-        Globals.addToTx(name);
+        Globals.addToTx(name, Thread.currentThread());
         //send it to TxMgrImpl:
         //writeToDisk(table, name);
-        return Globals.getTable(name);
+        return (Map<K, V>) Globals.getTable(name);
     }
 
     private <K, V> void writeToDisk(DBTable<K, V> table, String name){
@@ -96,7 +97,6 @@ public enum DBMSImpl implements DBMS {
             File file = new File(name);
             if(!file.mkdir()) {
                 //throw new RuntimeException();
-                System.out.println();
             }
             FileOutputStream fileOut = new FileOutputStream(name+"/"+name+".ser", false);
             ObjectOutputStream out = new ObjectOutputStream(fileOut);
@@ -110,6 +110,28 @@ public enum DBMSImpl implements DBMS {
 
     public static void main(String[] args) {
 
+    }
+
+    /**
+     * Sets the duration of the "transaction timeout".  A client whose
+     * transaction's duration exceeds the DBMS's timeout will be automatically
+     * rolled back by the DBMS.
+     *
+     * @param ms the timeout duration in ms, must be greater than 0
+     */
+    @Override
+    public void setTxTimeoutInMillis(int ms) {
+        Globals.lockingTimeout = ms;
+    }
+
+    /**
+     * Returns the current DBMS transaction timeout duration.
+     *
+     * @return duration in milliseconds
+     */
+    @Override
+    public int getTxTimeoutInMillis() {
+        return Globals.lockingTimeout;
     }
 }
 

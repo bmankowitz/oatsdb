@@ -5,8 +5,8 @@ package edu.yu.oatsdb.base;
  * @author Avraham Leff
  */
 
-//import org.apache.logging.log4j.LogManager;
-//import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 public enum OATSDBType {
   V0, V1, V2;
@@ -21,14 +21,14 @@ public enum OATSDBType {
   public static DBMS dbmsFactory(OATSDBType oatsdbType)
   throws InstantiationException
   {
-    //logger.info("Creating DBMS implementation for {}", oatsdbType);
+    logger.info("Creating DBMS implementation for {}", oatsdbType);
 
     DBMS dbms = null;
 
     try {
       if (oatsdbType == null) {
         final String msg = "Null 'oatsdbType' parameter";
-        //logger.error(msg);
+        logger.error(msg);
         throw new ClassNotFoundException(msg);
       }
 
@@ -52,14 +52,14 @@ public enum OATSDBType {
         dbms = DBMS.class.cast(instance);
         break;
       default:
-        //logger.error("Unknown 'oatsdbType' parameter: {}", oatsdbType);
+        logger.error("Unknown 'oatsdbType' parameter: {}", oatsdbType);
         throw new ClassNotFoundException
           ("Unknown 'oatsdbType' parameter: "+oatsdbType);
       } // switch
     }   // try
     catch(Exception e) {
       final String msg = "Problem creating instance of "+oatsdbType+" ["+e+"]";
-      //logger.error(msg);
+      logger.error(msg);
       throw new InstantiationException(msg); // no version which takes "cause"
     }
 
@@ -75,14 +75,14 @@ public enum OATSDBType {
   public static TxMgr txMgrFactory(OATSDBType oatsdbType)
   throws InstantiationException
   {
-    //logger.info("Creating TxMgr implementation for {}", oatsdbType);
+    logger.info("Creating TxMgr implementation for {}", oatsdbType);
 
     TxMgr txMgr = null;
 
     try {
       if (oatsdbType == null) {
         final String msg = "Null 'oatsdbType' parameter";
-        //logger.error(msg);
+        logger.error(msg);
         throw new ClassNotFoundException(msg);
       }
       
@@ -106,14 +106,14 @@ public enum OATSDBType {
         txMgr = TxMgr.class.cast(instance);
         break;
       default:
-        //logger.error("Unknown 'oatsdbType' parameter: {}", oatsdbType);
+        logger.error("Unknown 'oatsdbType' parameter: {}", oatsdbType);
         throw new ClassNotFoundException
           ("Unknown 'oatsdbType' parameter: "+oatsdbType);
       } // switch
     }   // try
     catch(Exception e) {
       final String msg = "Problem creating instance of "+oatsdbType+" ["+e+"]";
-      //logger.error(msg);
+      logger.error(msg);
       throw new InstantiationException(msg); // no version which takes "cause"
     }
 
@@ -123,5 +123,5 @@ public enum OATSDBType {
   // =========================================================================
   // ivars
   // =========================================================================
-  //private final static Logger logger = LogManager.getLogger(OATSDBType.class);
+  private final static Logger logger = LogManager.getLogger(OATSDBType.class);
 }

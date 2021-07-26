@@ -68,6 +68,8 @@ public class DBMSImplTest {
         txMgr.begin();
         gradeDetail.put('A', "Success!");
         txMgr.commit();
+        txMgr.begin();
+        assertEquals(db.getMap("grades", Character.class, String.class).get('A'), "Success!");
     }
 
     @Test(expected = IllegalArgumentException.class)
@@ -88,6 +90,13 @@ public class DBMSImplTest {
         txMgr.begin();
         Map<Character, String> gradeDetail = db.createMap("a",Character.class, String.class);
         Map<Character, String> gradeDetail2 = db.createMap("a",Character.class, String.class);
+        txMgr.rollback();
+    }
+    @Test(expected = IllegalArgumentException.class)
+    public void createMapNameExistsSeparateClasses() throws InstantiationException, SystemException, NotSupportedException, RollbackException {
+        txMgr.begin();
+        Map<Character, String> gradeDetail = db.createMap("a",Character.class, String.class);
+        Map<String, String> gradeDetail2 = db.createMap("a",String.class, String.class);
         txMgr.rollback();
     }
 

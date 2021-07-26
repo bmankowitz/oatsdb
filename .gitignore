@@ -1,2 +1,5 @@
 # ignore class files
 *.class
+
+#ignore target files
+*/target/*

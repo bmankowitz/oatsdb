@@ -9,13 +9,10 @@ public class TxImpl implements Tx, Serializable {
     TxStatus status = TxStatus.NO_TRANSACTION; //default value
     //A transaction is a series of DB commands.
     public TxImpl(Thread thread){
+        setStatus(TxStatus.NO_TRANSACTION);
         txThread = thread;
     }
 
-    @Deprecated
-    public TxImpl(){
-
-    }
 
     public TxStatus getStatus() throws SystemException {
         return status;
@@ -41,7 +38,4 @@ public class TxImpl implements Tx, Serializable {
         this.status = status;
     }
 
-    protected  void setThread(Thread thread){
-        txThread = thread;
-    }
 }
