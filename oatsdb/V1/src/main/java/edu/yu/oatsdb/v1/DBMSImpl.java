@@ -3,8 +3,6 @@ package edu.yu.oatsdb.v1;
 import edu.yu.oatsdb.base.*;
 
 import java.io.*;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.NoSuchElementException;
 
@@ -44,7 +42,7 @@ public enum DBMSImpl implements DBMS, ConfigurableDBMS {
         }
 
 
-        Globals.addToTx(name, Thread.currentThread());
+        Globals.addTableToThread(name, Thread.currentThread());
         return Globals.getTable(name);
     }
 
@@ -85,7 +83,7 @@ public enum DBMSImpl implements DBMS, ConfigurableDBMS {
         table.valueClass = valueClass;
         table.tableName = name;
         Globals.addNameTable(name, table);
-        Globals.addToTx(name, Thread.currentThread());
+        Globals.addTableToThread(name, Thread.currentThread());
         //send it to TxMgrImpl:
         //writeToDisk(table, name);
         return (Map<K, V>) Globals.getTable(name);

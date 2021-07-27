@@ -85,7 +85,9 @@ public class VmlensMultithreadTest {
     @Test
     public void simpleTwoThreadConcurrentPut() throws ExecutionException, InterruptedException, SystemException, NotSupportedException, RollbackException {
         try (AllInterleavings allInterleavings = new AllInterleavings("2ConcurrentPut");){
+            int i = 0;
             while(allInterleavings.hasNext()){
+                System.out.println("==================================RUN "+(i++)+"==========================================");
                 Thread first = new Thread( () -> {
                     try {
                         txMgr.begin();
@@ -101,6 +103,8 @@ public class VmlensMultithreadTest {
                     } catch (Exception e){ e.printStackTrace(); };
                 });
                 // Wait until all threads are finish
+                first.setName("First Thread");
+                second.setName("Second Thread");
                 first.start();
                 second.start();
                 first.join();
