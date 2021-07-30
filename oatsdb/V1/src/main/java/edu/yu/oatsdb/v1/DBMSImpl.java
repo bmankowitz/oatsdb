@@ -8,18 +8,13 @@ import java.util.NoSuchElementException;
 
 public enum DBMSImpl implements DBMS, ConfigurableDBMS {
     Instance;
-    //private HashMap<String, DBTable> tables = new HashMap<String, DBTable>();
 
     @SuppressWarnings("unchecked")
     public <K, V> Map<K, V> getMap(String name, Class<K> keyClass, Class<V> valueClass) {
         //ensure client is in a transaction
-        try {
-            if (Globals.threadTxMap.get(Thread.currentThread()) == null ||
-                    Globals.threadTxMap.get(Thread.currentThread()).status != TxStatus.ACTIVE) {
-                throw new ClientNotInTxException("Not in a Tx");
-            }
-        }catch (NullPointerException e){
-            throw new ClientNotInTxException("currentTx is null");
+        if (Globals.threadTxMap.get(Thread.currentThread()) == null ||
+                Globals.threadTxMap.get(Thread.currentThread()).status != TxStatus.ACTIVE) {
+            throw new ClientNotInTxException("Unable to get map: not in an active transaction");
         }
 
         //ensure name is not blank/whitespace:
@@ -42,25 +37,20 @@ public enum DBMSImpl implements DBMS, ConfigurableDBMS {
         }
 
 
-        Globals.addTableToThread(name, Thread.currentThread());
+        Globals.addTableToThread(name);
         return Globals.getTable(name);
     }
 
+    @SuppressWarnings("unchecked")
     public <K, V> Map<K, V> createMap(String name, Class<K> keyClass, Class<V> valueClass) {
-        //basic set-up: since this needs to be persistent, save each new Map to a folder.
-        //Within the folder, there is the original Map and a new file for each transaction.
 
-        //Create the object and write to file.
 
         //ensure this is not for a rolledback tx:
         //ensure we are in a Tx:
-        try {
-            if (Globals.threadTxMap.get(Thread.currentThread()) == null ||
-                    Globals.threadTxMap.get(Thread.currentThread()).status != TxStatus.ACTIVE) {
-                throw new ClientNotInTxException("Not in a Tx");
-            }
-        }catch (NullPointerException e){
-            throw new ClientNotInTxException("currentTx is null");
+
+        if (Globals.threadTxMap.get(Thread.currentThread()) == null ||
+                Globals.threadTxMap.get(Thread.currentThread()).status != TxStatus.ACTIVE) {
+            throw new ClientNotInTxException("Cannot create map: not in an active transaction");
         }
         //ensure name is not blank/whitespace:
         if(name.trim().isEmpty()){
@@ -77,13 +67,10 @@ public enum DBMSImpl implements DBMS, ConfigurableDBMS {
         }
 
         //let's start by creating the object:
-        DBTable<K, V> table = new DBTable<>();
+        DBTable<K, V> table = new DBTable<>(name, keyClass, valueClass);
         //set the object's types:
-        table.keyClass = keyClass;
-        table.valueClass = valueClass;
-        table.tableName = name;
         Globals.addNameTable(name, table);
-        Globals.addTableToThread(name, Thread.currentThread());
+        Globals.addTableToThread(name);
         //send it to TxMgrImpl:
         //writeToDisk(table, name);
         return (Map<K, V>) Globals.getTable(name);
@@ -104,10 +91,6 @@ public enum DBMSImpl implements DBMS, ConfigurableDBMS {
         } catch (IOException e) {
             e.printStackTrace();
         }
-    }
-
-    public static void main(String[] args) {
-
     }
 
     /**

@@ -244,8 +244,8 @@ public class ConcurrentTest {
     }
     @Test
     public void NSimultaneousThreadsMultipleTxPerThread() throws SystemException, NotSupportedException, RollbackException, ExecutionException, InterruptedException {
-        int MY_THREADS = 1000;
-        int NUM_TIMES = 1000;
+        int MY_THREADS = 10000;
+        int NUM_TIMES = 10000;
         //ExecutorService executor = Executors.newFixedThreadPool(MY_THREADS);
         ExecutorService executor = Executors.newCachedThreadPool();
 
@@ -266,6 +266,7 @@ public class ConcurrentTest {
                         objectMap.put('C', "Third tx");
                         txMgr.commit();
                     } catch (NotSupportedException | SystemException | RollbackException  e) {
+                        Runtime.getRuntime().halt(33);
                         e.printStackTrace();
                         throw new RuntimeException();
                     }
@@ -366,18 +367,18 @@ public class ConcurrentTest {
             public void run() {
                 try {
                     txMgr.begin();
-                    logger.info("Setting A");
+                    if (Globals.log) logger.info("Setting A");
                     objectMap = db.getMap("obj", Object.class, Object.class);
                     objectMap2 = db.getMap("obj2", Object.class, Object.class);
                     objectMap.put('A', "Set");
                     objectMap2.put('A',"Set");
-                    logger.info("Set A");
-                    logger.info("About to sleep");
+                    if (Globals.log) logger.info("Set A");
+                    if (Globals.log) logger.info("About to sleep");
                     Thread.sleep(300);
-                    logger.info("Awake");
-                    logger.info("Committing A");
+                    if (Globals.log) logger.info("Awake");
+                    if (Globals.log) logger.info("Committing A");
                     txMgr.commit();
-                    logger.info("Committed A");
+                    if (Globals.log) logger.info("Committed A");
                 } catch (NotSupportedException | SystemException | RollbackException | InterruptedException e) {
                     e.printStackTrace();
                     throw new RuntimeException();
@@ -390,12 +391,12 @@ public class ConcurrentTest {
                 try {
                     Thread.sleep(20);
                     txMgr.begin();
-                    logger.info("Checking A");
+                    if (Globals.log) logger.info("Checking A");
                     assertEquals("Set", db.getMap("obj", Object.class, Object.class).get('A'));
                     assertEquals("Set", db.getMap("obj2", Object.class, Object.class).get('A'));
-                    logger.info("Committing B");
+                    if (Globals.log) logger.info("Committing B");
                     txMgr.commit();
-                    logger.info("Committed B");
+                    if (Globals.log) logger.info("Committed B");
                 } catch (NotSupportedException | SystemException | RollbackException | InterruptedException e) {
                     e.printStackTrace();
                     throw new RuntimeException();
@@ -640,10 +641,10 @@ public class ConcurrentTest {
                     txMgr.begin();
                     objectMap.put("q", "Set");
                     long startTime = System.currentTimeMillis();
-                    logger.info("Set a at {}", startTime);
+                    if (Globals.log) logger.info("Set a at {}", startTime);
                     while (System.currentTimeMillis() - startTime < 500){}
                     txMgr.commit();
-                    logger.info("committed a");
+                    if (Globals.log) logger.info("committed a");
 
                 } catch (NotSupportedException | SystemException | RollbackException e) {
                     e.printStackTrace();
@@ -657,15 +658,15 @@ public class ConcurrentTest {
                 try {
                     Thread.sleep(20);
                     txMgr.begin();
-                    logger.info("Checking A");
+                    if (Globals.log) logger.info("Checking A");
                     double start = System.currentTimeMillis();
-                    logger.info("Should now be waiting...");
+                    if (Globals.log) logger.info("Should now be waiting...");
                     assertEquals("Set", objectMap.get("q"));
                     double end = System.currentTimeMillis();
-                    logger.info("Checked A. Now checking time:");
+                    if (Globals.log) logger.info("Checked A. Now checking time:");
                     assertTrue( end - start < 1750);
                     txMgr.commit();
-                    logger.info("Done!");
+                    if (Globals.log) logger.info("Done!");
                 } catch (NotSupportedException | SystemException | RollbackException | InterruptedException e) {
                     e.printStackTrace();
                     throw new RuntimeException();

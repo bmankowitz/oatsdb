@@ -13,12 +13,6 @@ public class DBMSImplTest {
     TxMgr txMgr;
     int i;
 
-    public DBMSImplTest() throws InstantiationException {
-        //DBMS db = OATSDBType.dbmsFactory(OATSDBType.v1);
-        //TxMgr txMgr = OATSDBType.txMgrFactory(OATSDBType.v1);
-        int i = 1;
-    }
-
     @Before
     public void before() throws InstantiationException {
         db = OATSDBType.dbmsFactory(OATSDBType.V1);
@@ -26,8 +20,8 @@ public class DBMSImplTest {
     }
     @After
     public void after() throws InstantiationException {
-        //db = null;
-        //txMgr = null;
+        db = null;
+        txMgr = null;
     }
 
 

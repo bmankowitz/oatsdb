@@ -17,11 +17,6 @@ public class DBTableTest {
     Map<Character, String> gradeDetail;
     int i;
 
-    public DBTableTest() throws InstantiationException {
-        //DBMS db = OATSDBType.dbmsFactory(OATSDBType.v1);
-        //TxMgr txMgr = OATSDBType.txMgrFactory(OATSDBType.v1);
-        int i = 1;
-    }
 
     @Before
     public void before() throws InstantiationException, SystemException, NotSupportedException, RollbackException {
@@ -37,8 +32,8 @@ public class DBTableTest {
 
     @After
     public void after() throws InstantiationException {
-        //db = null;
-        //txMgr = null;
+        db = null;
+        txMgr = null;
     }
 
 
@@ -65,6 +60,13 @@ public class DBTableTest {
     public void getElementAfterCommit() throws InstantiationException, SystemException, NotSupportedException {
         txMgr.begin();
         gradeDetail.get('A');
+        txMgr.rollback();
+    }
+    @Test
+    public void removeReturnsElement() throws InstantiationException, SystemException, NotSupportedException {
+        txMgr.begin();
+        gradeDetail.put(']', "Set");
+        assertEquals("Set", gradeDetail.remove(']'));
         txMgr.rollback();
     }
     @Test
@@ -96,7 +98,7 @@ public class DBTableTest {
         txMgr.commit();
         arr.add("elem2");
         txMgr.begin();
-        assertTrue(!map.get('A').contains("elem2"));
+        assertFalse(map.get('A').contains("elem2"));
         txMgr.rollback();
     }
 

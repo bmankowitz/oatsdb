@@ -5,7 +5,7 @@ import edu.yu.oatsdb.base.*;
 import java.io.Serializable;
 
 public class TxImpl implements Tx, Serializable {
-    Thread txThread;
+    final Thread txThread;
     TxStatus status = TxStatus.NO_TRANSACTION; //default value
     //A transaction is a series of DB commands.
     public TxImpl(Thread thread){
