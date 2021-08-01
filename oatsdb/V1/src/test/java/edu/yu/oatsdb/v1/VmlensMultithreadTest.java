@@ -10,6 +10,7 @@ import org.junit.Test;
 
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 
 import static org.junit.Assert.assertEquals;
@@ -18,6 +19,7 @@ public class VmlensMultithreadTest {
     static DBMS db;
     static TxMgr txMgr;
     static Map<Object, Object> objectMap;
+    static AtomicBoolean killProcess = new AtomicBoolean(false);
     private final static Logger logger = LogManager.getLogger(VmlensMultithreadTest.class);
 
     static class SetMapObj<K,V> implements Runnable {
@@ -42,10 +44,14 @@ public class VmlensMultithreadTest {
                 objectMap = db.getMap(name, Object.class, Object.class);
                 objectMap.put(key, value);
                 txMgr.commit();
-            } catch (NotSupportedException | SystemException | RollbackException e) {
+            } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                    | SystemException | ClientTxRolledBackException e) {
+                e.printStackTrace();
+                Runtime.getRuntime().halt(-34);
+                killProcess.set(true);
                 e.printStackTrace();
                 throw new RuntimeException();
-            }
+            } catch (Exception e){ Thread.currentThread().stop();};
 
         }
     }
@@ -65,10 +71,14 @@ public class VmlensMultithreadTest {
                 objectMap = db.getMap(mapName, Object.class, Object.class);
                 objectMap.get(key);
                 txMgr.commit();
-            } catch (NotSupportedException | SystemException | RollbackException e) {
+            } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                    | SystemException | ClientTxRolledBackException e) {
+                e.printStackTrace();
+                Runtime.getRuntime().halt(-34);
+                killProcess.set(true);
                 e.printStackTrace();
                 throw new RuntimeException();
-            }
+            } catch (Exception e){ Thread.currentThread().stop();};
 
         }
     }
@@ -87,21 +97,35 @@ public class VmlensMultithreadTest {
     public void simpleTwoThreadConcurrentPut() throws ExecutionException, InterruptedException, SystemException, NotSupportedException, RollbackException {
         try (AllInterleavings allInterleavings = AllInterleavings.builder("2ConcurrentPut").maximumSynchronizationActionsPerThread(2000).build()){
             int i = 0;
-            while(allInterleavings.hasNext()){
+            while(allInterleavings.hasNext() && !killProcess.get()){
                 System.out.println("==================================RUN "+(i++)+"==========================================");
                 Thread first = new Thread( () -> {
                     try {
                         txMgr.begin();
                         objectMap.put("First", "Set");
                         txMgr.commit();
-                    } catch (Exception e){ e.printStackTrace(); }
+                    } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                            | SystemException | ClientTxRolledBackException e) {
+                        e.printStackTrace();
+                        Runtime.getRuntime().halt(-34);
+                        killProcess.set(true);
+                        e.printStackTrace();
+                        throw new RuntimeException();
+                    } catch (Exception e){ Thread.currentThread().stop();};
                 });
                 Thread second = new Thread( () -> {
                     try {
                         txMgr.begin();
                         objectMap.put("Second", "Set");
                         txMgr.commit();
-                    } catch (Exception e){ e.printStackTrace(); }
+                    } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                            | SystemException | ClientTxRolledBackException e) {
+                        e.printStackTrace();
+                        Runtime.getRuntime().halt(-34);
+                        killProcess.set(true);
+                        e.printStackTrace();
+                        throw new RuntimeException();
+                    } catch (Exception e){ Thread.currentThread().stop();};
                 });
                 // Wait until all threads are finish
                 first.setName("First Thread");
@@ -128,14 +152,28 @@ public class VmlensMultithreadTest {
                         txMgr.begin();
                         objectMap.get("First");
                         txMgr.commit();
-                    } catch (Exception e){ e.printStackTrace(); }
+                    } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                            | SystemException | ClientTxRolledBackException e) {
+                        e.printStackTrace();
+                        Runtime.getRuntime().halt(-34);
+                        killProcess.set(true);
+                        e.printStackTrace();
+                        throw new RuntimeException();
+                    } catch (Exception e){ Thread.currentThread().stop();};
                 });
                 Thread second = new Thread( () -> {
                     try {
                         txMgr.begin();
                         objectMap.get("Second");
                         txMgr.commit();
-                    } catch (Exception e){ e.printStackTrace(); }
+                    } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                            | SystemException | ClientTxRolledBackException e) {
+                        e.printStackTrace();
+                        Runtime.getRuntime().halt(-34);
+                        killProcess.set(true);
+                        e.printStackTrace();
+                        throw new RuntimeException();
+                    } catch (Exception e){ Thread.currentThread().stop();};
                 });
                 first.setName("First Thread");
                 second.setName("Second Thread");
@@ -164,7 +202,14 @@ public class VmlensMultithreadTest {
                         txMgr.begin();
                         objectMap.get("Second");
                         txMgr.commit();
-                    } catch (Exception e){ e.printStackTrace(); }
+                    } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                            | SystemException | ClientTxRolledBackException e) {
+                        e.printStackTrace();
+                        Runtime.getRuntime().halt(-34);
+                        killProcess.set(true);
+                        e.printStackTrace();
+                        throw new RuntimeException();
+                    } catch (Exception e){ Thread.currentThread().stop();};
                 });
                 Thread second = new Thread( () -> {
                     try {
@@ -174,7 +219,14 @@ public class VmlensMultithreadTest {
                         txMgr.begin();
                         objectMap.get("Second");
                         txMgr.commit();
-                    } catch (Exception e){ e.printStackTrace(); }
+                    } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                            | SystemException | ClientTxRolledBackException e) {
+                        e.printStackTrace();
+                        Runtime.getRuntime().halt(-34);
+                        killProcess.set(true);
+                        e.printStackTrace();
+                        throw new RuntimeException();
+                    } catch (Exception e){ Thread.currentThread().stop();};
                 });
                 // Wait until all threads are finish
                 first.start();
@@ -201,7 +253,14 @@ public class VmlensMultithreadTest {
                         txMgr.begin();
                         objectMap.put("Second", "Set");
                         txMgr.commit();
-                    } catch (Exception e){ e.printStackTrace(); }
+                    } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                            | SystemException | ClientTxRolledBackException e) {
+                        e.printStackTrace();
+                        Runtime.getRuntime().halt(-34);
+                        killProcess.set(true);
+                        e.printStackTrace();
+                        throw new RuntimeException();
+                    } catch (Exception e){ Thread.currentThread().stop();};
                 });
                 Thread second = new Thread( () -> {
                     try {
@@ -211,7 +270,14 @@ public class VmlensMultithreadTest {
                         txMgr.begin();
                         objectMap.put("Second", "Set");
                         txMgr.commit();
-                    } catch (Exception e){ e.printStackTrace(); }
+                    } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                            | SystemException | ClientTxRolledBackException e) {
+                        e.printStackTrace();
+                        Runtime.getRuntime().halt(-34);
+                        killProcess.set(true);
+                        e.printStackTrace();
+                        throw new RuntimeException();
+                    } catch (Exception e){ Thread.currentThread().stop();};
                 });
                 // Wait until all threads are finish
                 first.start();

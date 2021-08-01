@@ -8,7 +8,6 @@ import org.apache.logging.log4j.Logger;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class DBTable<K, V> implements Serializable, Map<K, V> {
@@ -21,13 +20,11 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
     enum methodType{
         GET, PUT, REMOVE
     }
-    enum NULL{
-        NULL
-    }
+
 
     private final ConcurrentHashMap<K, V> official = new ConcurrentHashMap<>(); //The single, primary hashmap
     // FIXME: 7/27/2021 REPLACE HASHSET WITH ConcurrentLinkedQueue for thread safety
-    private final ConcurrentLinkedQueue<K> lockedKeys = new ConcurrentLinkedQueue<>();
+    private final Set<K> lockedKeys = ConcurrentHashMap.newKeySet();
     private final ThreadLocal<HashMap<K, methodType>> keysInTx = ThreadLocal.withInitial(HashMap::new);
     private final ThreadLocal<HashMap<K, V>> shadow = ThreadLocal.withInitial(HashMap::new);
     protected final AtomicBoolean readyForUse = new AtomicBoolean(false);
@@ -98,7 +95,7 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
         unlockAndSetKeys(TxStatus.ROLLING_BACK);
     }
 
-    private void addKeyToTx(K key, methodType method){
+    private void addAndInitializeKeyToTx(K key, methodType method){
         if(keysInTx.get().containsKey(key)){
             if (Globals.log) logger.debug("Skipping key {} with shadow value {}  and official value {} via {}",
                     key, shadow.get().get(key), official.get(key), method);
@@ -106,6 +103,8 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
         }
         if (Globals.log) logger.debug("Locking key {} with shadow value {}  and official value {} via {}",
                 key, shadow.get().get(key), official.get(key), method);
+        if (Globals.log) logger.debug("\n Shadow: {} \n Official: {} \n keysInTX: {} \n lockedKeys: {}",
+                shadow.get(), official, keysInTx.get(), lockedKeys);
         // FIXME: 7/27/2021 This println somehow saves the day. need to investigate
         //System.out.println(Thread.currentThread() + "locking: " + key);
         key = serializeK(key);
@@ -171,7 +170,7 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
                 if (Globals.log) logger.error(Thread.currentThread() + ": FAILED - Finished Rollback. Throwing Exception");
                 //FIXME: REMOVE THIS !!!!!
 
-                System.exit(44);
+                //Runtime.getRuntime().halt(333);
                 throw new edu.yu.oatsdb.base.ClientTxRolledBackException("timeout exceeded");
             }
         }
@@ -206,7 +205,7 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
         }
         //if this key is not in a transaction (new use - need to add to shadow cache (like a cache miss))
         else if(!keysInTx.get().containsKey((K) key)){
-            addKeyToTx((K) key, methodType.GET);
+            addAndInitializeKeyToTx((K) key, methodType.GET);
             return serializeV(shadow.get().get(key));
         }
 
@@ -234,9 +233,11 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
         if(lockedKeys.contains(key) && !keysInTx.get().containsKey(key)){
             lockedKeyWait(key);
         }
-        addKeyToTx(key, methodType.PUT);
+        addAndInitializeKeyToTx(key, methodType.PUT);
         //now that the previously locked key is available and loaded with official value, update it;
         retVal = shadow.get().put(key, serializeV(value));
+        if (Globals.log) logger.debug("Done PUTTING key {} with shadow value {}  and official value {}",
+                key, shadow.get().get(key), official.get(key));
         return serializeV(retVal);
     }
 
@@ -259,8 +260,10 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
         if(lockedKeys.contains((K) key) && !keysInTx.get().containsKey((K) key)){
             lockedKeyWait((K) key);
         }
-        addKeyToTx((K) key, methodType.REMOVE);
+        addAndInitializeKeyToTx((K) key, methodType.REMOVE);
         retVal = shadow.get().remove(key);
+        if (Globals.log) logger.debug("Done REMOVING key {} with shadow value {}  and official value {}",
+                key, shadow.get().get(key), official.get(key));
         return serializeV(retVal);
     }
 

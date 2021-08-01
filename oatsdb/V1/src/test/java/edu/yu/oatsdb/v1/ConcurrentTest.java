@@ -9,6 +9,9 @@ import org.junit.*;
 import java.util.concurrent.*;
 import java.util.Map;
 import java.util.ArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+
 import static org.junit.Assert.*;
 
 
@@ -21,7 +24,7 @@ public class ConcurrentTest {
     Map<Object, Object> objectMap;
     Map<Object, Object> objectMap2;
     private final static Logger logger = LogManager.getLogger(ConcurrentTest.class);
-
+    public static AtomicBoolean killProcess = new AtomicBoolean(false);
     /**This initializer method creates the OATS database and Transaction Manager,
      * as well as creating three different empty maps.
      * @throws InstantiationException
@@ -33,9 +36,11 @@ public class ConcurrentTest {
     public void before() throws InstantiationException, SystemException, NotSupportedException, RollbackException {
         db = (ConfigurableDBMS) OATSDBType.dbmsFactory(OATSDBType.V1);
         txMgr = OATSDBType.txMgrFactory(OATSDBType.V1);
-        txMgr.begin() ;
-        objectMap = db.createMap("obj", Object.class, Object.class);
-        objectMap2 = db.createMap("obj2", Object.class, Object.class);
+        txMgr.begin();
+        try {
+            objectMap = db.createMap("obj", Object.class, Object.class);
+            objectMap2 = db.createMap("obj2", Object.class, Object.class);
+        } catch (IllegalArgumentException ignored){}
         txMgr.commit();
 
     }
@@ -66,11 +71,20 @@ public class ConcurrentTest {
                 txMgr.begin();
                 objectMap = db.getMap(name, Object.class, Object.class);
                 objectMap.put(key, value);
+                assertEquals(value, objectMap.get(key));
                 txMgr.commit();
-            } catch (NotSupportedException | SystemException | RollbackException e) {
+                txMgr.begin();
+                assertEquals(value, objectMap.get(key));
+                txMgr.commit();
+            } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                    | SystemException | ClientTxRolledBackException e) {
+                e.printStackTrace();
+                Runtime.getRuntime().halt(-34);
+                fail();
+                killProcess.set(true);
                 e.printStackTrace();
                 throw new RuntimeException();
-            }
+            } catch (Exception e){ Thread.currentThread().stop();};
 
         }
     }
@@ -90,10 +104,16 @@ public class ConcurrentTest {
                 objectMap = db.getMap(mapName, Object.class, Object.class);
                 objectMap.get(key);
                 txMgr.commit();
-            } catch (NotSupportedException | SystemException | RollbackException e) {
+            } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                    | SystemException | ClientTxRolledBackException e) {
+                e.printStackTrace();
+                fail();
+Runtime.getRuntime().halt(-34);
+                killProcess.set(true);
                 e.printStackTrace();
                 throw new RuntimeException();
-            }
+            } catch (Exception e){ Thread.currentThread().stop();};
+
 
         }
     }
@@ -108,7 +128,7 @@ public class ConcurrentTest {
         Future<Void> future1 = (Future<Void>) executor.submit(addB);
         executor.shutdown();
         // Wait until all threads are finish
-        while (!executor.isTerminated()) {}
+        while (!executor.isTerminated() && !killProcess.get()) {}
         System.out.println("\nFinished all threads");
 
         future.get();
@@ -121,7 +141,10 @@ public class ConcurrentTest {
     }
     @Test
     public void basicNoConflictPutRepeating() throws SystemException, NotSupportedException, RollbackException, InterruptedException, ExecutionException {
-        for(int i = 0; i < 20000; i++) basicNoConflictPut();
+        for(int i = 0; i < 20000; i++){
+            if(killProcess.get()) break;
+            basicNoConflictPut();
+        }
     }
     @Test
     public void NSimultaneousNoConflictPutSameMap() throws SystemException, NotSupportedException, RollbackException, ExecutionException, InterruptedException {
@@ -131,6 +154,7 @@ public class ConcurrentTest {
         ExecutorService executor = Executors.newFixedThreadPool(MY_THREADS);
         ArrayList<Future<Void>> futures = new ArrayList<>();
         for (int i = 0; i < NUM_TIMES; i++) {
+            if(killProcess.get()) break;
             Runnable setI = new SetMapObj("obj", i, "Set");
             futures.add((Future<Void>) executor.submit(setI));
         }
@@ -142,6 +166,7 @@ public class ConcurrentTest {
             future.get();
         }
         for (int i = 0; i < NUM_TIMES; i++) {
+            if(killProcess.get()) break;
             txMgr.begin();
             assertEquals("Set", db.getMap("obj", Object.class, Object.class).get(i));
             txMgr.commit();
@@ -150,11 +175,12 @@ public class ConcurrentTest {
     @Test
     public void NSimultaneousNoConflictPutSeparateMaps() throws SystemException, NotSupportedException, RollbackException, ExecutionException, InterruptedException {
         // FIXME: 7/19/2021 FAILS SOMETIMES. UNCLEAR WHY
-        int MY_THREADS = 10000;
-        int NUM_TIMES = 10000;
+        int MY_THREADS = 1000;
+        int NUM_TIMES = 1000;
         ExecutorService executor = Executors.newFixedThreadPool(MY_THREADS);
         ArrayList<Future<Void>> futures = new ArrayList<>();
         for (int i = 0; i < NUM_TIMES; i++) {
+            if(killProcess.get()) break;
             Runnable setI = new SetMapObj("obj", i, "Set");
             Runnable setI2 = new SetMapObj("obj2", i, "Set");
             futures.add((Future<Void>) executor.submit(setI));
@@ -162,12 +188,13 @@ public class ConcurrentTest {
         }
         executor.shutdown();
         // Wait until all threads are finish
-        while (!executor.isTerminated()) {}
+        while (!executor.isTerminated() && !killProcess.get()) {}
         System.out.println("\nFinished all threads");
         for(Future<Void> future : futures){
             future.get();
         }
         for (int i = 0; i < NUM_TIMES; i++) {
+            if(killProcess.get()) break;
             txMgr.begin();
             assertEquals("Set", db.getMap("obj", Object.class, Object.class).get(i));
             assertEquals("Set", db.getMap("obj2", Object.class, Object.class).get(i));
@@ -184,6 +211,7 @@ public class ConcurrentTest {
         ArrayList<Future<Void>> futures = new ArrayList<>();
         double simulStart = System.nanoTime();
         for (int i = 0; i < NUM_TIMES; i++) {
+            if(killProcess.get()) break;
             Runnable setI = new SetMapObj("obj", i, "Set");
             futures.add((Future<Void>) executor.submit(setI));
         }
@@ -193,6 +221,7 @@ public class ConcurrentTest {
         //now for single thread:
         double seqStart = System.nanoTime();
         for (int i = NUM_TIMES; i < NUM_TIMES*2; i++) {
+            if(killProcess.get()) break;
             Runnable setI = new SetMapObj("obj", i, "Set");
             futures.add((Future<Void>) singleThread.submit(setI));
         }
@@ -201,6 +230,7 @@ public class ConcurrentTest {
             future.get();
         }
         for (int i = 0; i < NUM_TIMES*2; i++) {
+            if(killProcess.get()) break;
             txMgr.begin();
             assertEquals("Set", db.getMap("obj", Object.class, Object.class).get(i));
             txMgr.commit();
@@ -220,6 +250,7 @@ public class ConcurrentTest {
         ArrayList<Future<Void>> futures = new ArrayList<>();
         double simulStart = System.nanoTime();
         for (int i = 0; i < NUM_TIMES; i++) {
+            if(killProcess.get()) break;
             Runnable getI = new GetMapObj("obj", i);
             futures.add((Future<Void>) executor.submit(getI));
         }
@@ -244,13 +275,14 @@ public class ConcurrentTest {
     }
     @Test
     public void NSimultaneousThreadsMultipleTxPerThread() throws SystemException, NotSupportedException, RollbackException, ExecutionException, InterruptedException {
-        int MY_THREADS = 10000;
-        int NUM_TIMES = 10000;
+        int MY_THREADS = 1000;
+        int NUM_TIMES = 1000;
         //ExecutorService executor = Executors.newFixedThreadPool(MY_THREADS);
         ExecutorService executor = Executors.newCachedThreadPool();
 
         ArrayList<Future<Void>> futures = new ArrayList<>();
         for (int i = 0; i < NUM_TIMES; i++) {
+            if(killProcess.get()) break;
             Runnable setI = new Runnable() {
                 @Override
                 public void run() {
@@ -265,16 +297,19 @@ public class ConcurrentTest {
                         txMgr.begin();
                         objectMap.put('C', "Third tx");
                         txMgr.commit();
-                    } catch (NotSupportedException | SystemException | RollbackException  e) {
-                        Runtime.getRuntime().halt(33);
+                    } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                            | SystemException | ClientTxRolledBackException e) {
+                        e.printStackTrace();
+                        Runtime.getRuntime().halt(-34);
+                        fail();
+                        executor.shutdownNow();
+                        killProcess.set(true);
                         e.printStackTrace();
                         throw new RuntimeException();
-                    }
+                    } catch (Exception e){ Thread.currentThread().stop();};
                 }
             };
-            futures.add((Future<Void>) executor.submit(setI));
-            //Thread.sleep(1);
-        }
+            futures.add((Future<Void>) executor.submit(setI));}
         executor.shutdown();
         // Wait until all threads are finish
         while (!executor.isTerminated()) {}
@@ -308,10 +343,16 @@ public class ConcurrentTest {
                     Thread.sleep(50);
                     System.out.println("Awake");
                     txMgr.commit();
-                } catch (NotSupportedException | SystemException | RollbackException | InterruptedException e) {
+                } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                        | SystemException | ClientTxRolledBackException e) {
+                    e.printStackTrace();
+                    fail();
+Runtime.getRuntime().halt(-34);
+                    executor.shutdownNow();
+                    killProcess.set(true);
                     e.printStackTrace();
                     throw new RuntimeException();
-                }
+                } catch (Exception e){ Thread.currentThread().stop();};
             }
         };
         Runnable addB = new Runnable() {
@@ -331,17 +372,23 @@ public class ConcurrentTest {
                     System.out.println("Checked A");
                     txMgr.commit();
                     Thread.sleep(50);
-                } catch (NotSupportedException | SystemException | RollbackException | InterruptedException e) {
+                } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                        | SystemException | ClientTxRolledBackException e) {
+                    e.printStackTrace();
+                    fail();
+Runtime.getRuntime().halt(-34);
+                    executor.shutdownNow();
+                    killProcess.set(true);
                     e.printStackTrace();
                     throw new RuntimeException();
-                }
+                } catch (Exception e){ Thread.currentThread().stop();};
             }
         };
         Future<Void> future = (Future<Void>) executor.submit(addA);
         Future<Void> future1 = (Future<Void>) executor.submit(addB);
         // Wait until all threads are finish
         executor.shutdown();
-        while (!executor.isTerminated()) {}
+        while (!executor.isTerminated() && !killProcess.get()) {}
         System.out.println("\nFinished all threads");
 
         future.get();
@@ -379,10 +426,16 @@ public class ConcurrentTest {
                     if (Globals.log) logger.info("Committing A");
                     txMgr.commit();
                     if (Globals.log) logger.info("Committed A");
-                } catch (NotSupportedException | SystemException | RollbackException | InterruptedException e) {
+                } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                        | SystemException | ClientTxRolledBackException e) {
+                    e.printStackTrace();
+                    fail();
+Runtime.getRuntime().halt(-34);
+                    executor.shutdownNow();
+                    killProcess.set(true);
                     e.printStackTrace();
                     throw new RuntimeException();
-                }
+                } catch (Exception e){ Thread.currentThread().stop();};
             }
         };
         Runnable addB = new Runnable() {
@@ -397,10 +450,16 @@ public class ConcurrentTest {
                     if (Globals.log) logger.info("Committing B");
                     txMgr.commit();
                     if (Globals.log) logger.info("Committed B");
-                } catch (NotSupportedException | SystemException | RollbackException | InterruptedException e) {
+                } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                        | SystemException | ClientTxRolledBackException e) {
+                    e.printStackTrace();
+                    fail();
+Runtime.getRuntime().halt(-34);
+                    executor.shutdownNow();
+                    killProcess.set(true);
                     e.printStackTrace();
                     throw new RuntimeException();
-                }
+                } catch (Exception e){ Thread.currentThread().stop();};
             }
         };
         Future<Void> future = (Future<Void>) executor.submit(addA);
@@ -426,9 +485,7 @@ public class ConcurrentTest {
     @Test
     public void txProgressInvisibleToOtherThreadsRepeating() throws InterruptedException, RollbackException, NotSupportedException, ExecutionException, SystemException {
         for (int i = 0; i < 150; i++) {
-            //txProgressInvisibleToOtherThread();
-        }
-        for (int i = 0; i < 150; i++) {
+            if(killProcess.get()) break;
             System.out.println("Run: "+ i);
             txProgressInvisibleToOtherThreadMultipleMaps();
         }
@@ -455,10 +512,16 @@ public class ConcurrentTest {
                     txMgr.commit();
                     System.out.println("Finished Set1");
 
-                } catch (NotSupportedException | SystemException | RollbackException | InterruptedException e) {
+                } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                        | SystemException | ClientTxRolledBackException e) {
+                    e.printStackTrace();
+                    fail();
+Runtime.getRuntime().halt(-34);
+                    executor.shutdownNow();
+                    killProcess.set(true);
                     e.printStackTrace();
                     throw new RuntimeException();
-                }
+                } catch (Exception e){ Thread.currentThread().stop();};
             }
         };
         Runnable addB = new Runnable() {
@@ -472,10 +535,16 @@ public class ConcurrentTest {
                     objectMap.put('C', "Set2");
                     txMgr.commit();
                     System.out.println("Finished Set2");
-                } catch (NotSupportedException | SystemException | RollbackException | InterruptedException e) {
+                } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                        | SystemException | ClientTxRolledBackException e) {
                     e.printStackTrace();
-                    //throw new RuntimeException();
-                }
+                    fail();
+Runtime.getRuntime().halt(-34);
+                    executor.shutdownNow();
+                    killProcess.set(true);
+                    e.printStackTrace();
+                    throw new RuntimeException();
+                } catch (Exception e){ Thread.currentThread().stop();};
             }
         };
         Future<Void> future = (Future<Void>) executor.submit(addA);
@@ -524,7 +593,12 @@ public class ConcurrentTest {
                     txMgr.commit();
                     System.out.println("Finished Set1");
 
-                } catch (NotSupportedException | SystemException | RollbackException | InterruptedException e) {
+                } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException | SystemException | InterruptedException e) {
+                    e.printStackTrace();
+                    fail();
+Runtime.getRuntime().halt(-34);
+                    executor.shutdownNow();
+                    killProcess.set(true);
                     e.printStackTrace();
                     throw new RuntimeException();
                 }
@@ -542,7 +616,12 @@ public class ConcurrentTest {
                     objectMap.put('C', "Set2");
                     txMgr.commit();
                     System.out.println("Finished Set2");
-                } catch (NotSupportedException | SystemException | RollbackException | InterruptedException e) {
+                } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException | SystemException | InterruptedException e) {
+                    e.printStackTrace();
+                    fail();
+Runtime.getRuntime().halt(-34);
+                    executor.shutdownNow();
+                    killProcess.set(true);
                     e.printStackTrace();
                     throw new RuntimeException();
                 }
@@ -564,7 +643,7 @@ public class ConcurrentTest {
     @Test
     public void TenTxAccessingSameElementTimeout() throws Throwable {
         int MY_THREADS = 15;
-        int exceptions = 0;
+        final AtomicInteger exceptions = new AtomicInteger(0);
         txMgr.begin();
         objectMap = db.getMap("obj", Object.class, Object.class);
         objectMap.put('C', "Set");
@@ -575,7 +654,7 @@ public class ConcurrentTest {
             @Override
             public void run() {
                 try {
-                    Thread.currentThread().setName("set1");
+                    Thread.currentThread().setName("setting");
                     txMgr.begin();
                     System.out.println("Started Set1");
                     objectMap = db.getMap("obj", Object.class, Object.class);
@@ -584,27 +663,26 @@ public class ConcurrentTest {
                     txMgr.commit();
                     System.out.println("Finished Set1");
 
-                } catch (NotSupportedException | SystemException | RollbackException | InterruptedException e) {
-                    e.printStackTrace();
-                    throw new RuntimeException();
-                }
+                } catch (InterruptedException | NotSupportedException | SystemException | RollbackException e){
+                    throw new RuntimeException(e.getCause());
+                } catch (ClientNotInTxException e){ exceptions.getAndIncrement();}
             }
         };
         Runnable addB = new Runnable() {
             @Override
             public void run() {
                 try {
-                    Thread.sleep(10);
+                    Thread.currentThread().setName("checking");
+                    Thread.sleep(75);
                     txMgr.begin();
                     System.out.println("Started otherSet");
                     objectMap = db.getMap("obj", Object.class, Object.class);
                     objectMap.put('C', "Set2");
                     txMgr.commit();
                     System.out.println("Finished otherSEt");
-                } catch (NotSupportedException | SystemException | RollbackException | InterruptedException e) {
-                    e.printStackTrace();
-                    throw new RuntimeException();
-                }
+                } catch (InterruptedException | NotSupportedException | SystemException | RollbackException e){
+                    throw new RuntimeException(e.getCause());
+                } catch (ClientTxRolledBackException e){ exceptions.getAndIncrement();}
             }
         };
         Future<Void> future = (Future<Void>) executor.submit(addA);
@@ -616,19 +694,11 @@ public class ConcurrentTest {
         executor.shutdown();
         while (!executor.isTerminated()) {}
         System.out.println("\nFinished all threads");
-        try {
-            future.get();
-        } catch (Exception e){
-            exceptions++;
-        }
+        future.get();
         for(Future<Void> lFuture : futures) {
-            try {
                 lFuture.get();
-            } catch (Exception e){
-                exceptions++;
-            }
         }
-        assertEquals(10, exceptions);
+        assertEquals(10, exceptions.get());
     }
     @Test
     public void ensureLockedKeyIsBlocking() throws SystemException, NotSupportedException, RollbackException, ExecutionException, InterruptedException {
@@ -646,10 +716,16 @@ public class ConcurrentTest {
                     txMgr.commit();
                     if (Globals.log) logger.info("committed a");
 
-                } catch (NotSupportedException | SystemException | RollbackException e) {
+                } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                        | SystemException | ClientTxRolledBackException e) {
+                    e.printStackTrace();
+                    fail();
+Runtime.getRuntime().halt(-34);
+                    executor.shutdownNow();
+                    killProcess.set(true);
                     e.printStackTrace();
                     throw new RuntimeException();
-                }
+                } catch (Exception e){ Thread.currentThread().stop();};
             }
         };
         Runnable addB = new Runnable() {
@@ -667,10 +743,16 @@ public class ConcurrentTest {
                     assertTrue( end - start < 1750);
                     txMgr.commit();
                     if (Globals.log) logger.info("Done!");
-                } catch (NotSupportedException | SystemException | RollbackException | InterruptedException e) {
+                } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                        | SystemException | ClientTxRolledBackException e) {
+                    e.printStackTrace();
+                    fail();
+Runtime.getRuntime().halt(-34);
+                    executor.shutdownNow();
+                    killProcess.set(true);
                     e.printStackTrace();
                     throw new RuntimeException();
-                }
+                } catch (Exception e){ Thread.currentThread().stop();};
             }
         };
         Future<Void> future = (Future<Void>) executor.submit(addA);
@@ -708,6 +790,7 @@ public class ConcurrentTest {
 
                 } catch (NotSupportedException | SystemException | RollbackException | InterruptedException e) {
                     e.printStackTrace();
+killProcess.set(true);
                     throw new RuntimeException();
                 }
             }
@@ -728,6 +811,7 @@ public class ConcurrentTest {
                 } catch (NotSupportedException | SystemException | RollbackException | InterruptedException e) {
                     fail();
                     e.printStackTrace();
+killProcess.set(true);
                     throw new RuntimeException();
                 }
             }
@@ -773,10 +857,16 @@ public class ConcurrentTest {
                     txMgr.commit();
                     System.out.println("Finished Set1");
 
-                } catch (NotSupportedException | SystemException | RollbackException | InterruptedException e) {
+                } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                        | SystemException | ClientTxRolledBackException e) {
+                    e.printStackTrace();
+                    fail();
+Runtime.getRuntime().halt(-34);
+                    executor.shutdownNow();
+                    killProcess.set(true);
                     e.printStackTrace();
                     throw new RuntimeException();
-                }
+                } catch (Exception e){ Thread.currentThread().stop();};
             }
         };
 
@@ -812,10 +902,16 @@ public class ConcurrentTest {
                     Thread.sleep(50);
                     assertEquals("Set", db.getMap("obj", Object.class, Object.class).get('F'));
                     txMgr.commit();
-                } catch (NotSupportedException | SystemException | RollbackException | InterruptedException e) {
+                } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                        | SystemException | ClientTxRolledBackException e) {
+                    e.printStackTrace();
+                    fail();
+Runtime.getRuntime().halt(-34);
+                    executor.shutdownNow();
+                    killProcess.set(true);
                     e.printStackTrace();
                     throw new RuntimeException();
-                }
+                } catch (Exception e){ Thread.currentThread().stop();};
             }
         };
         Runnable addB = new Runnable() {
@@ -827,10 +923,16 @@ public class ConcurrentTest {
                     objectMap.replace('F', "Set");
                     txMgr.commit();
                     Thread.sleep(5);
-                } catch (NotSupportedException | SystemException | RollbackException | InterruptedException e) {
+                } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                        | SystemException | ClientTxRolledBackException e) {
+                    e.printStackTrace();
+                    fail();
+Runtime.getRuntime().halt(-34);
+                    executor.shutdownNow();
+                    killProcess.set(true);
                     e.printStackTrace();
                     throw new RuntimeException();
-                }
+                } catch (Exception e){ Thread.currentThread().stop();};
             }
         };
         Future<Void> future = (Future<Void>) executor.submit(addA);
