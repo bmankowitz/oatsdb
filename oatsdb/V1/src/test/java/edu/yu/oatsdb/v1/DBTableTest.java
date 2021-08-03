@@ -167,10 +167,10 @@ public class DBTableTest {
     public void putIsCached() throws InstantiationException, SystemException, NotSupportedException, RollbackException {
         txMgr.begin();
         gradeDetail.put('9', "Hello");
-        assertEquals(gradeDetail.get('9'), "Hello");
+        assertEquals("Hello", gradeDetail.get('9'));
         txMgr.commit();
         txMgr.begin();
-        assertEquals(gradeDetail.get('9'), "Hello");
+        assertEquals("Hello", gradeDetail.get('9'));
         txMgr.commit();
     }
 
@@ -180,12 +180,26 @@ public class DBTableTest {
         gradeDetail.put('9', "Hello");
         txMgr.commit();
         txMgr.begin();
-        assertEquals(gradeDetail.get('9'), "Hello");
+        assertEquals("Hello", gradeDetail.get('9'));
         assertEquals(gradeDetail.remove('9'), "Hello");
         assertNull(gradeDetail.get('9'));
         txMgr.commit();
         txMgr.begin();
         assertNull(gradeDetail.get('9'));
+        txMgr.commit();
+    }
+    @Test
+    public void removeRollbackIsNotSaved() throws InstantiationException, SystemException, NotSupportedException, RollbackException {
+        txMgr.begin();
+        gradeDetail.put('9', "Hello");
+        txMgr.commit();
+        txMgr.begin();
+        assertEquals("Hello", gradeDetail.get('9'));
+        assertEquals("Hello", gradeDetail.remove('9'));
+        assertNull(gradeDetail.get('9'));
+        txMgr.rollback();
+        txMgr.begin();
+        assertEquals("Hello", gradeDetail.get('9'));
         txMgr.commit();
     }
 

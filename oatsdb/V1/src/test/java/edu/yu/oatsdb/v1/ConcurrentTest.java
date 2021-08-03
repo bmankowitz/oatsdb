@@ -84,7 +84,7 @@ public class ConcurrentTest {
                 killProcess.set(true);
                 e.printStackTrace();
                 throw new RuntimeException();
-            } catch (Exception e){ Thread.currentThread().stop();};
+            } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();};
 
         }
     }
@@ -112,7 +112,7 @@ Runtime.getRuntime().halt(-34);
                 killProcess.set(true);
                 e.printStackTrace();
                 throw new RuntimeException();
-            } catch (Exception e){ Thread.currentThread().stop();};
+            } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();};
 
 
         }
@@ -306,7 +306,7 @@ Runtime.getRuntime().halt(-34);
                         killProcess.set(true);
                         e.printStackTrace();
                         throw new RuntimeException();
-                    } catch (Exception e){ Thread.currentThread().stop();};
+                    } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();};
                 }
             };
             futures.add((Future<Void>) executor.submit(setI));}
@@ -352,7 +352,7 @@ Runtime.getRuntime().halt(-34);
                     killProcess.set(true);
                     e.printStackTrace();
                     throw new RuntimeException();
-                } catch (Exception e){ Thread.currentThread().stop();};
+                } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();};
             }
         };
         Runnable addB = new Runnable() {
@@ -381,7 +381,7 @@ Runtime.getRuntime().halt(-34);
                     killProcess.set(true);
                     e.printStackTrace();
                     throw new RuntimeException();
-                } catch (Exception e){ Thread.currentThread().stop();};
+                } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();};
             }
         };
         Future<Void> future = (Future<Void>) executor.submit(addA);
@@ -435,7 +435,7 @@ Runtime.getRuntime().halt(-34);
                     killProcess.set(true);
                     e.printStackTrace();
                     throw new RuntimeException();
-                } catch (Exception e){ Thread.currentThread().stop();};
+                } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();};
             }
         };
         Runnable addB = new Runnable() {
@@ -459,7 +459,7 @@ Runtime.getRuntime().halt(-34);
                     killProcess.set(true);
                     e.printStackTrace();
                     throw new RuntimeException();
-                } catch (Exception e){ Thread.currentThread().stop();};
+                } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();};
             }
         };
         Future<Void> future = (Future<Void>) executor.submit(addA);
@@ -521,7 +521,7 @@ Runtime.getRuntime().halt(-34);
                     killProcess.set(true);
                     e.printStackTrace();
                     throw new RuntimeException();
-                } catch (Exception e){ Thread.currentThread().stop();};
+                } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();};
             }
         };
         Runnable addB = new Runnable() {
@@ -544,7 +544,7 @@ Runtime.getRuntime().halt(-34);
                     killProcess.set(true);
                     e.printStackTrace();
                     throw new RuntimeException();
-                } catch (Exception e){ Thread.currentThread().stop();};
+                } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();};
             }
         };
         Future<Void> future = (Future<Void>) executor.submit(addA);
@@ -725,7 +725,7 @@ Runtime.getRuntime().halt(-34);
                     killProcess.set(true);
                     e.printStackTrace();
                     throw new RuntimeException();
-                } catch (Exception e){ Thread.currentThread().stop();};
+                } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();};
             }
         };
         Runnable addB = new Runnable() {
@@ -752,7 +752,7 @@ Runtime.getRuntime().halt(-34);
                     killProcess.set(true);
                     e.printStackTrace();
                     throw new RuntimeException();
-                } catch (Exception e){ Thread.currentThread().stop();};
+                } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();};
             }
         };
         Future<Void> future = (Future<Void>) executor.submit(addA);
@@ -866,7 +866,7 @@ Runtime.getRuntime().halt(-34);
                     killProcess.set(true);
                     e.printStackTrace();
                     throw new RuntimeException();
-                } catch (Exception e){ Thread.currentThread().stop();};
+                } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();};
             }
         };
 
@@ -911,7 +911,7 @@ Runtime.getRuntime().halt(-34);
                     killProcess.set(true);
                     e.printStackTrace();
                     throw new RuntimeException();
-                } catch (Exception e){ Thread.currentThread().stop();};
+                } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();};
             }
         };
         Runnable addB = new Runnable() {
@@ -932,7 +932,7 @@ Runtime.getRuntime().halt(-34);
                     killProcess.set(true);
                     e.printStackTrace();
                     throw new RuntimeException();
-                } catch (Exception e){ Thread.currentThread().stop();};
+                } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();};
             }
         };
         Future<Void> future = (Future<Void>) executor.submit(addA);
