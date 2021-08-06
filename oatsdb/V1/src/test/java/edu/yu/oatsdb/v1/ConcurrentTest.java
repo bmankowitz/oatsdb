@@ -68,23 +68,34 @@ public class ConcurrentTest {
         @Override
         public void run() {
             try {
+                if (Globals.log) logger.debug("Running initial begin");
+
                 txMgr.begin();
-                objectMap = db.getMap(name, Object.class, Object.class);
+                final Map<Object,Object> objectMap = db.getMap(name, Object.class, Object.class);
                 objectMap.put(key, value);
+                if (Globals.log) logger.debug("Finished first put");
                 assertEquals(value, objectMap.get(key));
+                if (Globals.log) logger.debug("Finished first get (assert");
                 txMgr.commit();
+                if (Globals.log) logger.debug("Finished first commit. Starting second...");
+
                 txMgr.begin();
                 assertEquals(value, objectMap.get(key));
                 txMgr.commit();
+                if (Globals.log) logger.debug("Finished second commit.");
+
             } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
                     | SystemException | ClientTxRolledBackException e) {
+                if (Globals.log) logger.error("ERROR - caught exception {}", e.getMessage());
                 e.printStackTrace();
                 Runtime.getRuntime().halt(-34);
                 fail();
                 killProcess.set(true);
                 e.printStackTrace();
                 throw new RuntimeException();
-            } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();};
+            } catch (Throwable e){
+                if (Globals.log) logger.error("ERROR - caught general Exception {}", e.getMessage());
+                e.printStackTrace(); Thread.currentThread().stop();};
 
         }
     }
@@ -122,6 +133,7 @@ Runtime.getRuntime().halt(-34);
     public void basicNoConflictPut() throws SystemException, NotSupportedException, RollbackException, ExecutionException, InterruptedException {
         int MY_THREADS = 2;
         ExecutorService executor = Executors.newFixedThreadPool(MY_THREADS);
+        long startTime = System.currentTimeMillis();
         Runnable addA = new SetMapObj("obj", 'A', "Set");
         Runnable addB = new SetMapObj("obj", 'B', "Set");
         Future<Void> future = (Future<Void>) executor.submit(addA);
@@ -138,10 +150,11 @@ Runtime.getRuntime().halt(-34);
         assertEquals("Set", db.getMap("obj", Object.class, Object.class).get('A'));
         assertEquals("Set", db.getMap("obj", Object.class, Object.class).get('B'));
         txMgr.commit();
+        System.out.println(System.currentTimeMillis() - startTime);
     }
     @Test
     public void basicNoConflictPutRepeating() throws SystemException, NotSupportedException, RollbackException, InterruptedException, ExecutionException {
-        for(int i = 0; i < 20000; i++){
+        for(int i = 0; i < 2000; i++){
             if(killProcess.get()) break;
             basicNoConflictPut();
         }
@@ -175,12 +188,14 @@ Runtime.getRuntime().halt(-34);
     @Test
     public void NSimultaneousNoConflictPutSeparateMaps() throws SystemException, NotSupportedException, RollbackException, ExecutionException, InterruptedException {
         // FIXME: 7/19/2021 FAILS SOMETIMES. UNCLEAR WHY
+        //OK this method does not always commit
         int MY_THREADS = 1000;
         int NUM_TIMES = 1000;
-        ExecutorService executor = Executors.newFixedThreadPool(MY_THREADS);
+        //ExecutorService executor = Executors.newFixedThreadPool(MY_THREADS);
+        ExecutorService executor = Executors.newCachedThreadPool();
         ArrayList<Future<Void>> futures = new ArrayList<>();
         for (int i = 0; i < NUM_TIMES; i++) {
-            if(killProcess.get()) break;
+            //if(killProcess.get()) break;
             Runnable setI = new SetMapObj("obj", i, "Set");
             Runnable setI2 = new SetMapObj("obj2", i, "Set");
             futures.add((Future<Void>) executor.submit(setI));
@@ -188,7 +203,7 @@ Runtime.getRuntime().halt(-34);
         }
         executor.shutdown();
         // Wait until all threads are finish
-        while (!executor.isTerminated() && !killProcess.get()) {}
+        while (!executor.isTerminated()) {}
         System.out.println("\nFinished all threads");
         for(Future<Void> future : futures){
             future.get();

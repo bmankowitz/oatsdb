@@ -13,8 +13,10 @@ public enum TxMgrImpl implements TxMgr {
 
         if (Globals.log) logger.info("Starting begin from {}", Thread.currentThread());
         if(Globals.threadTxMap.containsKey(Thread.currentThread())){
-            throw new NotSupportedException("This thread ( "+Thread.currentThread().getName()+" ) " +
+            NotSupportedException e = new NotSupportedException("This thread ( "+Thread.currentThread().getName()+" ) " +
                     "is already in a different transaction. No nested transactions!");
+            e.printStackTrace();
+            throw e;
         }
         final TxImpl newTx = new TxImpl(Thread.currentThread());
         Globals.threadTxMap.put(Thread.currentThread(), newTx);
@@ -29,7 +31,7 @@ public enum TxMgrImpl implements TxMgr {
 
         final TxImpl currentTx = Globals.threadTxMap.get(Thread.currentThread());
 
-        if (Globals.log) logger.info("Starting commit {}, id= {}", Thread.currentThread(), Thread.currentThread().getId());
+        if (Globals.log) logger.info("Starting commit");
         if(!Globals.threadTxMap.containsKey(Thread.currentThread())) {
             throw new IllegalStateException("This thread is not in a transaction");
         }
