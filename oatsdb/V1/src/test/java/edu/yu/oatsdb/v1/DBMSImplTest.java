@@ -7,7 +7,9 @@ import org.junit.After;
 import java.util.Map;
 
 import static org.junit.Assert.*;
-
+class UnserializableObject{
+    transient int i = 3;
+}
 public class DBMSImplTest {
     DBMS db;
     TxMgr txMgr;
@@ -67,6 +69,16 @@ public class DBMSImplTest {
     }
 
     @Test(expected = IllegalArgumentException.class)
+    public void createMapValueClassNotSerializable() throws InstantiationException, SystemException,
+            NotSupportedException, RollbackException {
+        txMgr.begin();
+        Map<Character, UnserializableObject> gradeDetail = db.createMap("asfddd",Character.class,
+                UnserializableObject.class);
+        gradeDetail.put('s', new UnserializableObject());
+        txMgr.rollback();
+    }
+
+    @Test(expected = IllegalArgumentException.class)
     public void createMapNameBlank() throws InstantiationException, SystemException, NotSupportedException, RollbackException {
         txMgr.begin();
         Map<Character, String> gradeDetail = db.createMap("",Character.class, String.class);
@@ -87,7 +99,7 @@ public class DBMSImplTest {
         txMgr.rollback();
     }
     @Test(expected = IllegalArgumentException.class)
-    public void createMapNameExistsSeparateClasses() throws InstantiationException, SystemException, NotSupportedException, RollbackException {
+    public void createMapNameExistsButDifferentClasses() throws InstantiationException, SystemException, NotSupportedException, RollbackException {
         txMgr.begin();
         Map<Character, String> gradeDetail = db.createMap("a",Character.class, String.class);
         Map<String, String> gradeDetail2 = db.createMap("a",String.class, String.class);
@@ -122,10 +134,28 @@ public class DBMSImplTest {
     }
 
     @Test(expected = ClassCastException.class)
-    public void getMapMismatchedClass() throws InstantiationException, SystemException, NotSupportedException, RollbackException {
+    public void getMapMismatchedKeyAndValueClasses() throws InstantiationException, SystemException,
+            NotSupportedException,
+            RollbackException {
         txMgr.begin();
         Map<Character, String> gradeDetail = db.createMap("a",Character.class, String.class);
         db.getMap("a", Integer.class, Integer.class);
+        txMgr.rollback();
+    }
+    @Test(expected = ClassCastException.class)
+    public void getMapMismatchedKeyClass() throws InstantiationException, SystemException, NotSupportedException,
+            RollbackException {
+        txMgr.begin();
+        Map<Character, String> gradeDetail = db.createMap("a",Character.class, String.class);
+        db.getMap("a", Integer.class, String.class);
+        txMgr.rollback();
+    }
+    @Test(expected = ClassCastException.class)
+    public void getMapMismatchedValueClass() throws InstantiationException, SystemException, NotSupportedException,
+            RollbackException {
+        txMgr.begin();
+        Map<Character, String> gradeDetail = db.createMap("a",Character.class, String.class);
+        db.getMap("a", Character.class, Integer.class);
         txMgr.rollback();
     }
     @Test(expected = IllegalArgumentException.class)

@@ -35,6 +35,9 @@ public enum DBMSImpl implements DBMS, ConfigurableDBMS {
         if(keyClass != table.keyClass || valueClass != table.valueClass){
             throw new ClassCastException("Tried to get map with different classes than on file");
         }
+        //ensure serializable
+        if(!Serializable.class.isAssignableFrom(valueClass))
+            throw new IllegalArgumentException("Value class is not serializable");
 
 
         Globals.addTableToThread(name);
@@ -60,6 +63,9 @@ public enum DBMSImpl implements DBMS, ConfigurableDBMS {
         if(keyClass == null || valueClass == null){
             throw new IllegalArgumentException("Key/value class cannot be null");
         }
+        //ensure serializable
+        if(!Serializable.class.isAssignableFrom(valueClass))
+            throw new IllegalArgumentException("Value class is not serializable");
 
         //ensure that the name is not in use:
         if(Globals.alreadyExists(name)){

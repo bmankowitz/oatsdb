@@ -29,10 +29,10 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
     private final ConcurrentHashMap<K, V> official = new ConcurrentHashMap<>(); //The single, primary hashmap
     // FIXME: 7/27/2021 REPLACE HASHSET WITH ConcurrentLinkedQueue for thread safety
     private final ConcurrentHashMap<K, ReentrantLock> lockedKeys = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<Thread, HashSet<K>> keysInTx = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<Thread, HashMap<K,V>> shadow = new ConcurrentHashMap<>();
-//    private volatile ThreadLocal<HashSet<K>> keysInTx = ThreadLocal.withInitial(HashSet::new);
-//    private volatile ThreadLocal<HashMap<K, V>> shadow = ThreadLocal.withInitial(HashMap::new);
+    //private final ConcurrentHashMap<Thread, HashSet<K>> keysInTx = new ConcurrentHashMap<>();
+//    private final ConcurrentHashMap<Thread, HashMap<K,V>> shadow = new ConcurrentHashMap<>();
+    private volatile ThreadLocal<HashSet<K>> keysInTx = ThreadLocal.withInitial(HashSet::new);
+    private volatile ThreadLocal<HashMap<K, V>> shadow = ThreadLocal.withInitial(HashMap::new);
     protected final AtomicBoolean readyForUse = new AtomicBoolean(false);
     public Set<K> exists = ConcurrentHashMap.newKeySet();
     protected final String tableName;
@@ -81,14 +81,14 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
     }
     protected void ensureTableIsClean(){
         //starting a tx
-        if(!(shadow.get(Thread.currentThread()) == null) || !(keysInTx.get(Thread.currentThread()) == null)){
+        if(!shadow.get().isEmpty() || !keysInTx.get().isEmpty()){
             //if the shadow table is not empty, there is an incomplete Tx somewhere. Or some other error. Either way,
             //this is a catastrophic failure. Abort
-            if(shadow.get(Thread.currentThread()).isEmpty()) //if (Globals.log) if (Globals.log) logger.error("EMPTY SHADOW??");
-            if(keysInTx.get(Thread.currentThread()).isEmpty()) if (Globals.log) logger.error("EMPTY KEYS??");
+            if(shadow.get().isEmpty()) //if (Globals.log) if (Globals.log) logger.error("EMPTY SHADOW??");
+            if(keysInTx.get().isEmpty()) if (Globals.log) logger.error("EMPTY KEYS??");
             throw new RuntimeException("There is an incomplete Tx somewhere: "
-                    + "\nShadowArray:" + shadow.get(Thread.currentThread()) + "ShadowIsEmpty: " + shadow.get(Thread.currentThread()).isEmpty()
-                    + "\nkeysInTx: " + keysInTx.get(Thread.currentThread()) + "keysIsEmpty: " + keysInTx.get(Thread.currentThread()).isEmpty());
+                    + "\nShadowArray:" + shadow.get() + "ShadowIsEmpty: " + shadow.get().isEmpty()
+                    + "\nkeysInTx: " + keysInTx.get() + "keysIsEmpty: " + keysInTx.get().isEmpty());
         }
         readyForUse.set(true);
     }
@@ -106,18 +106,18 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
     private void unlockAndSetKeys(TxStatus status){
         //for commit/rollback: remove the lock on these keys
         //for committing:
-        if(keysInTx.get(Thread.currentThread()) == null) return;
-        for (K key : keysInTx.get(Thread.currentThread())) {
+        if(keysInTx.get() == null) return;
+        for (K key : keysInTx.get()) {
             if (Globals.log) logger.debug("Unlocking and setting {} -> {}", key,
-                    shadow.get(Thread.currentThread()).get(key));
+                    shadow.get().get(key));
 
             if (status == TxStatus.COMMITTING) {
                 //update the official value with the latest one from the shadow table
                 if (official.get(key) == null ||
-                        !official.get(key).equals(shadow.get(Thread.currentThread()).get(key))) {
-                    if (shadow.get(Thread.currentThread()).get(key) == null) {
+                        !official.get(key).equals(shadow.get().get(key))) {
+                    if (shadow.get().get(key) == null) {
                         official.remove(key);
-                    } else official.put(key, shadow.get(Thread.currentThread()).get(key));
+                    } else official.put(key, shadow.get().get(key));
                 }
             }
             //quick hack:
@@ -130,9 +130,9 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
         }
 
         //now we need to reset shadow db and keysInTx:
-        shadow.remove(Thread.currentThread());
+        shadow.remove();
         //keysInTx:
-        keysInTx.remove(Thread.currentThread());
+        keysInTx.remove();
 
         readyForUse.set(true);
 
@@ -158,41 +158,29 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
             if(lockedKeys.get(key).tryLock(Globals.lockingTimeout, TimeUnit.MILLISECONDS)){
                 //we have the lock
                 //need to initialize shadow!
-                shadow.computeIfAbsent(Thread.currentThread(), k -> new HashMap<>());
-
                 if (Globals.log) logger.debug("Acquired lock {} for key {} with shadow {} & official {}",
-                        lockedKeys.get(key),key, shadow.get(Thread.currentThread()).get(key), official.get(key));
+                        lockedKeys.get(key),key, shadow.get().get(key), official.get(key));
                 //if this is the first time seeing this key, we need to load the default original value into shadow tbl
-                keysInTx.compute(Thread.currentThread(), (txKey, txValue) -> {
-                    if( txValue == null) txValue = new HashSet<>();
-                    if(!txValue.contains(key)){
-                        //new key:
-                        shadow.get(txKey).put(key, official.get(key));
-                        txValue.add(key);
-                    }
-                    //in any case, set value:
-                    return txValue;
-                });
-//                if(!keysInTx.get(Thread.currentThread()).contains(key)){
-//                    exists.add(key);
-//                    keysInTx.get(Thread.currentThread()).add(key);
-//                    shadow.get(Thread.currentThread()).put(key, official.get(key));
-//                    logger.debug("Initializing new key {} with SHADOW: {} OFFICIAL: {}" , key, shadow.get(Thread.currentThread()).get(key),
-//                            official.get(key));
-//                }
-                logger.debug("existing keys after insertion: {}, lockcount: {} " , keysInTx.get(Thread.currentThread()),
+                if(!keysInTx.get().contains(key)){
+                    exists.add(key);
+                    keysInTx.get().add(key);
+                    shadow.get().put(key, official.get(key));
+                    logger.debug("Initializing new key {} with SHADOW: {} OFFICIAL: {}" , key, shadow.get().get(key),
+                            official.get(key));
+                }
+                logger.debug("existing keys after insertion: {}, lockcount: {} " , keysInTx.get(),
                         lockedKeys.get(key).getHoldCount());
                 //now this key has an initial value and is owned by this thread. return the result
                 if (Globals.log) logger.debug("Updating key {} with SHADOW: {} OFFICIAL: {} via {}",
-                        key, shadow.get(Thread.currentThread()).get(key), official.get(key), method);
-                if(method == methodType.GET) return shadow.get(Thread.currentThread()).get(key);
-                if(method == methodType.PUT) return shadow.get(Thread.currentThread()).put(key, value);
-                if(method == methodType.REMOVE) return shadow.get(Thread.currentThread()).remove(key);
+                        key, shadow.get().get(key), official.get(key), method);
+                if(method == methodType.GET) return shadow.get().get(key);
+                if(method == methodType.PUT) return shadow.get().put(key, value);
+                if(method == methodType.REMOVE) return shadow.get().remove(key);
             }
             else{
                 //we were unable to acquire the lock in the given time
                 if (Globals.log) logger.debug("Unable to get lock for key {} with shadow {} & official {} lock {}",
-                        key, shadow.get(Thread.currentThread()).get(key), official.get(key), lockedKeys.get(key));
+                        key, shadow.get().get(key), official.get(key), lockedKeys.get(key));
                 Globals.revertThreadTables();
                 throw new ClientTxRolledBackException("Unable to acquire lock on key '"+key+"' within time limit (ms):"
                         + Globals.lockingTimeout);
@@ -221,7 +209,7 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
         Globals.addTableToThread(this.getName());
         final V retVal = serializeV(getValue(serializeK((K) key), null, methodType.GET));
         if (Globals.log) logger.debug("Done GETTING key {} with shadow value {}  and official value {}",
-                key, shadow.get(Thread.currentThread()).get(key), official.get(key));
+                key, shadow.get().get(key), official.get(key));
         return retVal;
     }
 
@@ -244,7 +232,7 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
         Globals.addTableToThread(this.getName());
         retVal = serializeV(getValue(serializeK(key), serializeV(value), methodType.PUT));
         if (Globals.log) logger.debug("Done PUTTING key {} with shadow value {}  and official value {}",
-                key, shadow.get(Thread.currentThread()).get(key), official.get(key));
+                key, shadow.get().get(key), official.get(key));
         return retVal;
     }
 
@@ -266,27 +254,24 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
         Globals.addTableToThread(this.getName());
         retVal = serializeV(getValue(serializeK( (K) key), null, methodType.REMOVE));
         if (Globals.log) logger.debug("Done REMOVING key {} with shadow value {}  and official value {}",
-                key, shadow.get(Thread.currentThread()).get((K) key), official.get((K) key));
+                key, shadow.get().get((K) key), official.get((K) key));
         return serializeV(retVal);
     }
 
     //if there are uncommitted changes
     protected boolean isDirty(){
-        if(shadow.get(Thread.currentThread()) == null && keysInTx.get(Thread.currentThread()) == null) {
-            return false;
-        }
-        return !shadow.get(Thread.currentThread()).isEmpty() || !keysInTx.get(Thread.currentThread()).isEmpty();
+        return !shadow.get().isEmpty() || !keysInTx.get().isEmpty();
     }
 
     @Override
     public String toString(){
         StringBuilder sb = new StringBuilder();
-        if(shadow.get(Thread.currentThread()).isEmpty()) return "[]";
-        for(K key: shadow.get(Thread.currentThread()).keySet()){
-            sb.append("[").append(key).append(" --> ").append(shadow.get(Thread.currentThread()).get(key)).append("]\n");
+        if(shadow.get().isEmpty()) return "[]";
+        for(K key: shadow.get().keySet()){
+            sb.append("[").append(key).append(" --> ").append(shadow.get().get(key)).append("]\n");
         }
         for(K key: official.keySet()){
-            sb.append("OFFICIAL: [").append(key).append(" --> ").append(shadow.get(Thread.currentThread()).get(key)).append("]\n");
+            sb.append("OFFICIAL: [").append(key).append(" --> ").append(shadow.get().get(key)).append("]\n");
         }
         return sb.toString();
     }

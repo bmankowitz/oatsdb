@@ -56,6 +56,10 @@ public class DBTableTest {
     public void getOutsideTx() throws InstantiationException, SystemException, NotSupportedException {
         gradeDetail.get('A');
     }
+    @Test(expected = ClientNotInTxException.class)
+    public void removeOutsideTx() throws InstantiationException, SystemException, NotSupportedException {
+        gradeDetail.remove('D', "ERROR");
+    }
     @Test
     public void getElementAfterCommit() throws InstantiationException, SystemException, NotSupportedException {
         txMgr.begin();

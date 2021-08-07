@@ -21,8 +21,8 @@ public class ConcurrentTest {
     TxMgr txMgr;
     int i;
     Map<Character, String> gradeDetail;
-    Map<Object, Object> objectMap;
-    Map<Object, Object> objectMap2;
+    Map<Character, String> objectMap;
+    Map<Character, String> objectMap2;
     private final static Logger logger = LogManager.getLogger(ConcurrentTest.class);
     public static AtomicBoolean killProcess = new AtomicBoolean(false);
     /**This initializer method creates the OATS database and Transaction Manager,
@@ -38,8 +38,8 @@ public class ConcurrentTest {
         txMgr = OATSDBType.txMgrFactory(OATSDBType.V1);
         txMgr.begin();
         try {
-            objectMap = db.createMap("obj", Object.class, Object.class);
-            objectMap2 = db.createMap("obj2", Object.class, Object.class);
+            objectMap = db.createMap("obj", Character.class, String.class);
+            objectMap2 = db.createMap("obj2", Character.class, String.class);
         } catch (IllegalArgumentException ignored){}
         txMgr.commit();
 
@@ -52,14 +52,14 @@ public class ConcurrentTest {
 
     class SetMapObj<K,V> implements Runnable {
         final String name;
-        final K key;
-        final V value;
+        final Character key;
+        final String value;
         /**
          * @param mapName Name of the "map" (SQL table)
          * @param key The key. Must be of type Object
          * @param value The value. Must be of type Object
          */
-        public SetMapObj(String mapName, K key, V value) {
+        public SetMapObj(String mapName, Character key,String value) {
             this.name = mapName;
             this.key = key;
             this.value = value;
@@ -71,7 +71,7 @@ public class ConcurrentTest {
                 if (Globals.log) logger.debug("Running initial begin");
 
                 txMgr.begin();
-                final Map<Object,Object> objectMap = db.getMap(name, Object.class, Object.class);
+                final Map<Character,String> objectMap = db.getMap(name, Character.class, String.class);
                 objectMap.put(key, value);
                 if (Globals.log) logger.debug("Finished first put");
                 assertEquals(value, objectMap.get(key));
@@ -112,7 +112,7 @@ public class ConcurrentTest {
         public void run() {
             try {
                 txMgr.begin();
-                objectMap = db.getMap(mapName, Object.class, Object.class);
+                objectMap = db.getMap(mapName, Character.class, String.class);
                 objectMap.get(key);
                 txMgr.commit();
             } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
@@ -147,8 +147,8 @@ Runtime.getRuntime().halt(-34);
         future1.get();
 
         txMgr.begin();
-        assertEquals("Set", db.getMap("obj", Object.class, Object.class).get('A'));
-        assertEquals("Set", db.getMap("obj", Object.class, Object.class).get('B'));
+        assertEquals("Set", db.getMap("obj", Character.class, String.class).get('A'));
+        assertEquals("Set", db.getMap("obj", Character.class, String.class).get('B'));
         txMgr.commit();
         System.out.println(System.currentTimeMillis() - startTime);
     }
@@ -168,7 +168,7 @@ Runtime.getRuntime().halt(-34);
         ArrayList<Future<Void>> futures = new ArrayList<>();
         for (int i = 0; i < NUM_TIMES; i++) {
             if(killProcess.get()) break;
-            Runnable setI = new SetMapObj("obj", i, "Set");
+            Runnable setI = new SetMapObj("obj", (char) i, "Set");
             futures.add((Future<Void>) executor.submit(setI));
         }
         executor.shutdown();
@@ -181,7 +181,7 @@ Runtime.getRuntime().halt(-34);
         for (int i = 0; i < NUM_TIMES; i++) {
             if(killProcess.get()) break;
             txMgr.begin();
-            assertEquals("Set", db.getMap("obj", Object.class, Object.class).get(i));
+            assertEquals("Set", db.getMap("obj", Character.class, String.class).get((char) i));
             txMgr.commit();
         }
     }
@@ -196,8 +196,8 @@ Runtime.getRuntime().halt(-34);
         ArrayList<Future<Void>> futures = new ArrayList<>();
         for (int i = 0; i < NUM_TIMES; i++) {
             //if(killProcess.get()) break;
-            Runnable setI = new SetMapObj("obj", i, "Set");
-            Runnable setI2 = new SetMapObj("obj2", i, "Set");
+            Runnable setI = new SetMapObj("obj", (char) i, "Set");
+            Runnable setI2 = new SetMapObj("obj2", (char) i, "Set");
             futures.add((Future<Void>) executor.submit(setI));
             futures.add((Future<Void>) executor.submit(setI2));
         }
@@ -211,8 +211,8 @@ Runtime.getRuntime().halt(-34);
         for (int i = 0; i < NUM_TIMES; i++) {
             if(killProcess.get()) break;
             txMgr.begin();
-            assertEquals("Set", db.getMap("obj", Object.class, Object.class).get(i));
-            assertEquals("Set", db.getMap("obj2", Object.class, Object.class).get(i));
+            assertEquals("Set", db.getMap("obj", Character.class, String.class).get((char) i));
+            assertEquals("Set", db.getMap("obj2", Character.class, String.class).get((char) i));
             txMgr.commit();
         }
     }
@@ -227,7 +227,7 @@ Runtime.getRuntime().halt(-34);
         double simulStart = System.nanoTime();
         for (int i = 0; i < NUM_TIMES; i++) {
             if(killProcess.get()) break;
-            Runnable setI = new SetMapObj("obj", i, "Set");
+            Runnable setI = new SetMapObj("obj", (char)  i, "Set");
             futures.add((Future<Void>) executor.submit(setI));
         }
         executor.shutdown();
@@ -237,7 +237,7 @@ Runtime.getRuntime().halt(-34);
         double seqStart = System.nanoTime();
         for (int i = NUM_TIMES; i < NUM_TIMES*2; i++) {
             if(killProcess.get()) break;
-            Runnable setI = new SetMapObj("obj", i, "Set");
+            Runnable setI = new SetMapObj("obj", (char) i, "Set");
             futures.add((Future<Void>) singleThread.submit(setI));
         }
         double seqEnd = System.nanoTime();
@@ -247,7 +247,7 @@ Runtime.getRuntime().halt(-34);
         for (int i = 0; i < NUM_TIMES*2; i++) {
             if(killProcess.get()) break;
             txMgr.begin();
-            assertEquals("Set", db.getMap("obj", Object.class, Object.class).get(i));
+            assertEquals("Set", db.getMap("obj", Character.class, String.class).get((char) i));
             txMgr.commit();
         }
         double simulTime = (simulEnd-simulStart);
@@ -303,7 +303,7 @@ Runtime.getRuntime().halt(-34);
                 public void run() {
                     try {
                         txMgr.begin();
-                        objectMap = db.getMap("obj", Object.class, Object.class);
+                        objectMap = db.getMap("obj", Character.class, String.class);
                         objectMap.put('A', "First tx");
                         txMgr.commit();
                         txMgr.begin();
@@ -334,9 +334,9 @@ Runtime.getRuntime().halt(-34);
         }
         for (int i = 0; i < NUM_TIMES; i++) {
             txMgr.begin();
-            assertEquals("First tx", db.getMap("obj", Object.class, Object.class).get('A'));
-            assertEquals("Second tx", db.getMap("obj", Object.class, Object.class).get('B'));
-            assertEquals("Third tx", db.getMap("obj", Object.class, Object.class).get('C'));
+            assertEquals("First tx", db.getMap("obj", Character.class, String.class).get('A'));
+            assertEquals("Second tx", db.getMap("obj", Character.class, String.class).get('B'));
+            assertEquals("Third tx", db.getMap("obj", Character.class, String.class).get('C'));
             txMgr.commit();
         }
     }
@@ -351,7 +351,7 @@ Runtime.getRuntime().halt(-34);
                 try {
                     txMgr.begin();
                     System.out.println("Setting A");
-                    objectMap = db.getMap("obj", Object.class, Object.class);
+                    objectMap = db.getMap("obj", Character.class, String.class);
                     objectMap.put('A', "Set");
                     System.out.println("Set A");
                     System.out.println("Sleeping");
@@ -376,14 +376,14 @@ Runtime.getRuntime().halt(-34);
                 try {
                     txMgr.begin();
                     System.out.println("Setting B");
-                    objectMap = db.getMap("obj", Object.class, Object.class);
+                    objectMap = db.getMap("obj", Character.class, String.class);
                     objectMap.put('B', "Set");
                     System.out.println("Set B");
                     txMgr.commit();
                     txMgr.begin();
                     System.out.println("Checking A: ");
-                    System.out.println(db.getMap("obj", Object.class, Object.class).get('A'));
-                    assertEquals("Set", db.getMap("obj", Object.class, Object.class).get('A'));
+                    System.out.println(db.getMap("obj", Character.class, String.class).get('A'));
+                    assertEquals("Set", db.getMap("obj", Character.class, String.class).get('A'));
                     System.out.println("Checked A");
                     txMgr.commit();
                     Thread.sleep(50);
@@ -410,10 +410,10 @@ Runtime.getRuntime().halt(-34);
         future1.get();
 
         txMgr.begin();
-        assertEquals("Set", db.getMap("obj", Object.class, Object.class).get('A'));
-        assertEquals("Set", db.getMap("obj", Object.class, Object.class).get('B'));
+        assertEquals("Set", db.getMap("obj", Character.class, String.class).get('A'));
+        assertEquals("Set", db.getMap("obj", Character.class, String.class).get('B'));
         //set back to null:
-        objectMap = db.getMap("obj", Object.class, Object.class);
+        objectMap = db.getMap("obj", Character.class, String.class);
         objectMap.remove('A');
         objectMap.remove('B');
         txMgr.commit();
@@ -430,8 +430,8 @@ Runtime.getRuntime().halt(-34);
                 try {
                     txMgr.begin();
                     if (Globals.log) logger.info("Setting A");
-                    objectMap = db.getMap("obj", Object.class, Object.class);
-                    objectMap2 = db.getMap("obj2", Object.class, Object.class);
+                    objectMap = db.getMap("obj", Character.class, String.class);
+                    objectMap2 = db.getMap("obj2", Character.class, String.class);
                     objectMap.put('A', "Set");
                     objectMap2.put('A',"Set");
                     if (Globals.log) logger.info("Set A");
@@ -460,8 +460,8 @@ Runtime.getRuntime().halt(-34);
                     Thread.sleep(20);
                     txMgr.begin();
                     if (Globals.log) logger.info("Checking A");
-                    assertEquals("Set", db.getMap("obj", Object.class, Object.class).get('A'));
-                    assertEquals("Set", db.getMap("obj2", Object.class, Object.class).get('A'));
+                    assertEquals("Set", db.getMap("obj", Character.class, String.class).get('A'));
+                    assertEquals("Set", db.getMap("obj2", Character.class, String.class).get('A'));
                     if (Globals.log) logger.info("Committing B");
                     txMgr.commit();
                     if (Globals.log) logger.info("Committed B");
@@ -488,10 +488,10 @@ Runtime.getRuntime().halt(-34);
         future1.get();
 
         txMgr.begin();
-        assertEquals("Set", db.getMap("obj", Object.class, Object.class).get('A'));
-        assertEquals("Set", db.getMap("obj2", Object.class, Object.class).get('A'));
+        assertEquals("Set", db.getMap("obj", Character.class, String.class).get('A'));
+        assertEquals("Set", db.getMap("obj2", Character.class, String.class).get('A'));
         //set back to null:
-        objectMap = db.getMap("obj", Object.class, Object.class);
+        objectMap = db.getMap("obj", Character.class, String.class);
         objectMap.remove('A');
         objectMap2.remove('A');
         txMgr.commit();
@@ -510,7 +510,7 @@ Runtime.getRuntime().halt(-34);
     public void TwoTxAccessingSameElementUnderTimeout() throws SystemException, NotSupportedException, RollbackException, ExecutionException, InterruptedException {
         int MY_THREADS = 2;
         txMgr.begin();
-        objectMap = db.getMap("obj", Object.class, Object.class);
+        objectMap = db.getMap("obj", Character.class, String.class);
         objectMap.put('C', "Set");
         txMgr.commit();
 
@@ -521,7 +521,7 @@ Runtime.getRuntime().halt(-34);
                 try {
                     txMgr.begin();
                     System.out.println("Start Set1");
-                    objectMap = db.getMap("obj", Object.class, Object.class);
+                    objectMap = db.getMap("obj", Character.class, String.class);
                     objectMap.put('C', "Set1");
                     Thread.sleep(500);
                     txMgr.commit();
@@ -546,7 +546,7 @@ Runtime.getRuntime().halt(-34);
                     Thread.sleep(250);
                     txMgr.begin();
                     System.out.println("Start Set2");
-                    objectMap = db.getMap("obj", Object.class, Object.class);
+                    objectMap = db.getMap("obj", Character.class, String.class);
                     objectMap.put('C', "Set2");
                     txMgr.commit();
                     System.out.println("Finished Set2");
@@ -573,9 +573,9 @@ Runtime.getRuntime().halt(-34);
         future1.get();
 
         txMgr.begin();
-        assertEquals("Set2", db.getMap("obj", Object.class, Object.class).get('C'));
+        assertEquals("Set2", db.getMap("obj", Character.class, String.class).get('C'));
         //set back to null:
-        objectMap = db.getMap("obj", Object.class, Object.class);
+        objectMap = db.getMap("obj", Character.class, String.class);
         objectMap.remove('C');
         txMgr.commit();
     }
@@ -589,7 +589,7 @@ Runtime.getRuntime().halt(-34);
     public void TwoTxAccessingSameElementTimeout() throws Throwable {
         int MY_THREADS = 2;
         txMgr.begin();
-        objectMap = db.getMap("obj", Object.class, Object.class);
+        objectMap = db.getMap("obj", Character.class, String.class);
         objectMap.put('C', "Set");
         txMgr.commit();
 
@@ -601,7 +601,7 @@ Runtime.getRuntime().halt(-34);
                     Thread.currentThread().setName("set1");
                     txMgr.begin();
                     System.out.println("Started Set1");
-                    objectMap = db.getMap("obj", Object.class, Object.class);
+                    objectMap = db.getMap("obj", Character.class, String.class);
                     objectMap.put('C', "Set1");
                     boolean test = true;
                     Thread.sleep(6000);
@@ -627,7 +627,7 @@ Runtime.getRuntime().halt(-34);
                     Thread.sleep(250);
                     txMgr.begin();
                     System.out.println("Started Set2");
-                    objectMap = db.getMap("obj", Object.class, Object.class);
+                    objectMap = db.getMap("obj", Character.class, String.class);
                     objectMap.put('C', "Set2");
                     txMgr.commit();
                     System.out.println("Finished Set2");
@@ -660,7 +660,7 @@ Runtime.getRuntime().halt(-34);
         int MY_THREADS = 15;
         final AtomicInteger exceptions = new AtomicInteger(0);
         txMgr.begin();
-        objectMap = db.getMap("obj", Object.class, Object.class);
+        objectMap = db.getMap("obj", Character.class, String.class);
         objectMap.put('C', "Set");
         txMgr.commit();
 
@@ -672,7 +672,7 @@ Runtime.getRuntime().halt(-34);
                     Thread.currentThread().setName("setting");
                     txMgr.begin();
                     System.out.println("Started Set1");
-                    objectMap = db.getMap("obj", Object.class, Object.class);
+                    objectMap = db.getMap("obj", Character.class, String.class);
                     objectMap.put('C', "Set1");
                     Thread.sleep(6500);
                     txMgr.commit();
@@ -691,7 +691,7 @@ Runtime.getRuntime().halt(-34);
                     Thread.sleep(75);
                     txMgr.begin();
                     System.out.println("Started otherSet");
-                    objectMap = db.getMap("obj", Object.class, Object.class);
+                    objectMap = db.getMap("obj", Character.class, String.class);
                     objectMap.put('C', "Set2");
                     txMgr.commit();
                     System.out.println("Finished otherSEt");
@@ -724,7 +724,7 @@ Runtime.getRuntime().halt(-34);
             public void run() {
                 try {
                     txMgr.begin();
-                    objectMap.put("q", "Set");
+                    objectMap.put('q', "Set");
                     long startTime = System.currentTimeMillis();
                     if (Globals.log) logger.info("Set a at {}", startTime);
                     while (System.currentTimeMillis() - startTime < 500){}
@@ -752,7 +752,7 @@ Runtime.getRuntime().halt(-34);
                     if (Globals.log) logger.info("Checking A");
                     double start = System.currentTimeMillis();
                     if (Globals.log) logger.info("Should now be waiting...");
-                    assertEquals("Set", objectMap.get("q"));
+                    assertEquals("Set", objectMap.get('q'));
                     double end = System.currentTimeMillis();
                     if (Globals.log) logger.info("Checked A. Now checking time:");
                     assertTrue( end - start < 1750);
@@ -785,7 +785,7 @@ Runtime.getRuntime().halt(-34);
     public void TxRollbackTimeoutCorrectlyRollsBack() throws Throwable {
         int MY_THREADS = 11;
         txMgr.begin();
-        objectMap = db.getMap("obj", Object.class, Object.class);
+        objectMap = db.getMap("obj", Character.class, String.class);
         objectMap.put('C', "SetBefore");
         txMgr.commit();
 
@@ -797,7 +797,7 @@ Runtime.getRuntime().halt(-34);
                     Thread.currentThread().setName("set1");
                     txMgr.begin();
                     System.out.println("Started Set1");
-                    objectMap = db.getMap("obj", Object.class, Object.class);
+                    objectMap = db.getMap("obj", Character.class, String.class);
                     objectMap.put('C', "SetLongCommit");
                     Thread.sleep(7500);
                     txMgr.commit();
@@ -818,7 +818,7 @@ killProcess.set(true);
                     Thread.sleep(250);
                     txMgr.begin();
                     System.out.println("Started Set2");
-                    objectMap = db.getMap("obj", Object.class, Object.class);
+                    objectMap = db.getMap("obj", Character.class, String.class);
                     objectMap.put('C', "SetSecondCommit");
                     fail("This tx should have timed out by now");
                     txMgr.commit();
@@ -847,14 +847,14 @@ killProcess.set(true);
             else throw e.getCause();
         }
         txMgr.begin();
-        assertEquals("SetLongCommit", db.getMap("obj", Object.class, Object.class).get('C'));
+        assertEquals("SetLongCommit", db.getMap("obj", Character.class, String.class).get('C'));
         txMgr.commit();
     }
     @Test
     public void TxAllowsSingleThreadWorkBeyondTimeLimit() throws Throwable {
         int MY_THREADS = 11;
         txMgr.begin();
-        objectMap = db.getMap("obj", Object.class, Object.class);
+        objectMap = db.getMap("obj", Character.class, String.class);
         objectMap.put('Y', "SetBefore");
         txMgr.commit();
 
@@ -866,7 +866,7 @@ killProcess.set(true);
                     Thread.currentThread().setName("set1");
                     txMgr.begin();
                     System.out.println("Started Set1");
-                    objectMap = db.getMap("obj", Object.class, Object.class);
+                    objectMap = db.getMap("obj", Character.class, String.class);
                     objectMap.put('Y', "SetDuringLongCommit");
                     Thread.sleep(6000);
                     txMgr.commit();
@@ -896,7 +896,7 @@ Runtime.getRuntime().halt(-34);
             throw e.getCause();
         }
         txMgr.begin();
-        assertEquals("SetDuringLongCommit", db.getMap("obj", Object.class, Object.class).get('Y'));
+        assertEquals("SetDuringLongCommit", db.getMap("obj", Character.class, String.class).get('Y'));
 
     }
     @Test
@@ -904,7 +904,7 @@ Runtime.getRuntime().halt(-34);
         int MY_THREADS = 2;
         ExecutorService executor = Executors.newFixedThreadPool(MY_THREADS);
         txMgr.begin();
-        objectMap = db.getMap("obj", Object.class, Object.class);
+        objectMap = db.getMap("obj", Character.class, String.class);
         objectMap.put('F', "NotSet");
         txMgr.commit();
         Runnable addA = new Runnable() {
@@ -912,10 +912,10 @@ Runtime.getRuntime().halt(-34);
             public void run() {
                 try {
                     txMgr.begin();
-                    objectMap = db.getMap("obj", Object.class, Object.class);
-                    //System.out.println(db.getMap("obj", Object.class, Object.class).get('F'));
+                    objectMap = db.getMap("obj", Character.class, String.class);
+                    //System.out.println(db.getMap("obj", Character.class, String.class).get('F'));
                     Thread.sleep(50);
-                    assertEquals("Set", db.getMap("obj", Object.class, Object.class).get('F'));
+                    assertEquals("Set", db.getMap("obj", Character.class, String.class).get('F'));
                     txMgr.commit();
                 } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
                         | SystemException | ClientTxRolledBackException e) {
@@ -934,7 +934,7 @@ Runtime.getRuntime().halt(-34);
             public void run() {
                 try {
                     txMgr.begin();
-                    objectMap = db.getMap("obj", Object.class, Object.class);
+                    objectMap = db.getMap("obj", Character.class, String.class);
                     objectMap.replace('F', "Set");
                     txMgr.commit();
                     Thread.sleep(5);
@@ -961,7 +961,7 @@ Runtime.getRuntime().halt(-34);
         future1.get();
 
         txMgr.begin();
-        assertEquals("Set", db.getMap("obj", Object.class, Object.class).get('F'));
+        assertEquals("Set", db.getMap("obj", Character.class, String.class).get('F'));
         //set back to null:
         //objectMap.remove('F');
         txMgr.commit();
