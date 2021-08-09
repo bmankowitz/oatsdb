@@ -1,7 +1,8 @@
-package edu.yu.oatsdb.v1;
+package edu.yu.oatsdb.v2;
 
 import edu.yu.oatsdb.base.ClientNotInTxException;
 import edu.yu.oatsdb.base.ClientTxRolledBackException;
+import edu.yu.oatsdb.base.SystemException;
 import edu.yu.oatsdb.base.TxStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -37,7 +38,7 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
     protected final String tableName;
     protected final Class<K> keyClass;
     protected final Class<V> valueClass;
-    private final static Logger logger = LogManager.getLogger(java.edu.yu.oatsdb.v2.DBTable.class);
+    private final static Logger logger = LogManager.getLogger(DBTable.class);
     //THE PROBLEM IS THE SAME THREAD USING MULTIPLE MAPS!!!!
     //THREADLOCAL IS SHARED BETWEEN THE DIFFERENT MAPS, SO THE KEYS ARE RESET WHEN SWITCHING MAPS
 
@@ -92,17 +93,21 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
         readyForUse.set(true);
     }
 
-    protected void commitCurrentTable(){
+    protected void commitCurrentTable() throws SystemException{
         //committing a tx
         unlockAndSetKeys(TxStatus.COMMITTING);
     }
 
     protected void rollbackCurrentTable(){
         //rolling back a tx
-        unlockAndSetKeys(TxStatus.ROLLING_BACK);
+        try {
+            unlockAndSetKeys(TxStatus.ROLLING_BACK);
+        } catch (SystemException e) {
+            e.printStackTrace();
+        }
     }
 
-    private void unlockAndSetKeys(TxStatus status){
+    private synchronized void unlockAndSetKeys(TxStatus status) throws SystemException{
         //for commit/rollback: remove the lock on these keys
         //for committing:
         if(keysInTx.get() == null) return;
@@ -119,6 +124,7 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
                     } else official.put(key, shadow.get().get(key));
                 }
             }
+            //before unlocking, need to write the existing map:
             //quick hack:
             while(lockedKeys.get(key).getHoldCount() > 0)
                 lockedKeys.get(key).unlock();
@@ -127,6 +133,9 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
             if (Globals.log) logger.debug("Finished unlocking and  setting {} -> {} (Official)",
                     key, official.get(key));
         }
+        //finished setting the official table. Now need to propagate official table to temp-disk
+        if(status == TxStatus.COMMITTING) Globals.writeTempMap(new DBTableMetadata(tableName, keyClass, valueClass,
+                official));
 
         //now we need to reset shadow db and keysInTx:
         shadow.remove();
@@ -287,7 +296,8 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
         throw new RuntimeException("YouCan'tHaveItException");
     }
     public void putAll(Map<? extends K, ? extends V> m) {
-        throw new RuntimeException("YouCan'tHaveItException");
+        //TODO: does this need to be in a transaction?
+        official.putAll(m);
     }
     public void clear() {
         throw new RuntimeException("YouCan'tHaveItException");

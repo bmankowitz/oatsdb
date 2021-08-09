@@ -1,4 +1,4 @@
-package edu.yu.oatsdb.v1;
+package edu.yu.oatsdb.v2;
 
 import edu.yu.oatsdb.base.*;
 
@@ -11,7 +11,6 @@ import java.util.Map;
 import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.Assert.*;
 
@@ -35,8 +34,8 @@ public class ConcurrentTest {
      */
     @Before
     public void before() throws InstantiationException, SystemException, NotSupportedException, RollbackException {
-        db = (ConfigurableDBMS) OATSDBType.dbmsFactory(OATSDBType.V1);
-        txMgr = OATSDBType.txMgrFactory(OATSDBType.V1);
+        db = (ConfigurableDBMS) OATSDBType.dbmsFactory(OATSDBType.V2);
+        txMgr = OATSDBType.txMgrFactory(OATSDBType.V2);
         txMgr.begin();
         try {
             objectMap = db.createMap("obj", Character.class, String.class);

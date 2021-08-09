@@ -3,11 +3,8 @@ package edu.yu.oatsdb.v1;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
 @SuppressWarnings("all")
 public class Globals {
@@ -18,7 +15,7 @@ public class Globals {
     // FIXME: 7/27/2021 Replace ArrayList<DBTable> with thread safe concurrent queue
     protected static volatile ConcurrentHashMap<Thread, Set<DBTable>> threadTableMap = new ConcurrentHashMap<>(); //mapping of thread to DBTable(s)
     public static final boolean log = true;
-    private final static Logger logger = LogManager.getLogger(Globals.class);
+    private final static Logger logger = LogManager.getLogger(java.edu.yu.oatsdb.v2.Globals.class);
     public static int lockingTimeout = 5000;
 
     protected static boolean alreadyExists(String name){
@@ -32,9 +29,9 @@ public class Globals {
     }
 
     protected static void addTableToThread(String name){
-        if (Globals.log) logger.info("Received request to add  table {} to tx {}", name, Thread.currentThread());
+        if (java.edu.yu.oatsdb.v2.Globals.log) logger.info("Received request to add  table {} to tx {}", name, Thread.currentThread());
         if(nameTables.get(name).isDirty()) {
-            if (Globals.log) logger.info("AlreadyExists- Skipping request to add  table {} to tx {}", name, Thread.currentThread());
+            if (java.edu.yu.oatsdb.v2.Globals.log) logger.info("AlreadyExists- Skipping request to add  table {} to tx {}", name, Thread.currentThread());
             return;
         }
 

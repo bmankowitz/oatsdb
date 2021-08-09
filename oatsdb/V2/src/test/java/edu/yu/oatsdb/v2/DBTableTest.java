@@ -1,4 +1,4 @@
-package edu.yu.oatsdb.v1;
+package edu.yu.oatsdb.v2;
 
 import edu.yu.oatsdb.base.*;
 import org.junit.Test;
@@ -7,7 +7,6 @@ import org.junit.After;
 
 import java.util.ArrayList;
 import java.util.Map;
-import java.util.NoSuchElementException;
 
 import static org.junit.Assert.*;
 
@@ -20,8 +19,8 @@ public class DBTableTest {
 
     @Before
     public void before() throws InstantiationException, SystemException, NotSupportedException, RollbackException {
-        db = OATSDBType.dbmsFactory(OATSDBType.V1);
-        txMgr = OATSDBType.txMgrFactory(OATSDBType.V1);
+        db = OATSDBType.dbmsFactory(OATSDBType.V2);
+        txMgr = OATSDBType.txMgrFactory(OATSDBType.V2);
         txMgr.begin();
         gradeDetail = db.createMap("grades", Character.class, String.class);
         gradeDetail.put('A', "Best Grade");

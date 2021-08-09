@@ -91,12 +91,12 @@ public enum OATSDBType {
 
       switch(oatsdbType) {
       case V0:
-        clazz = Class.forName("java.edu.yu.oatsdb.v2.TxMgrImpl");
+        clazz = Class.forName("edu.yu.oatsdb.v0.TxMgrImpl");
         instance = Enum.valueOf((Class<Enum>)clazz, "Instance");
         txMgr = TxMgr.class.cast(instance);
         break;
       case V1:
-        clazz = Class.forName("java.edu.yu.oatsdb.v2.TxMgrImpl");
+        clazz = Class.forName("edu.yu.oatsdb.v1.TxMgrImpl");
         instance = Enum.valueOf((Class<Enum>)clazz, "Instance");
         txMgr = TxMgr.class.cast(instance);
         break;

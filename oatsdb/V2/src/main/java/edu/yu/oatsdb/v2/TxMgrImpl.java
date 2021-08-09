@@ -1,15 +1,21 @@
-package edu.yu.oatsdb.v1;
+package edu.yu.oatsdb.v2;
 
-import edu.yu.oatsdb.base.*;
+import edu.yu.oatsdb.base.NotSupportedException;
+import edu.yu.oatsdb.base.RollbackException;
+import edu.yu.oatsdb.base.SystemException;
+import edu.yu.oatsdb.base.Tx;
+import edu.yu.oatsdb.base.TxMgr;
+import edu.yu.oatsdb.base.TxStatus;
+import edu.yu.oatsdb.v2.Globals;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
 public enum TxMgrImpl implements TxMgr {
     Instance;
-    private final static Logger logger = LogManager.getLogger(java.edu.yu.oatsdb.v2.TxMgrImpl.class);
+    private final static Logger logger = LogManager.getLogger(TxMgrImpl.class);
 
-    public void begin() throws NotSupportedException, SystemException {
+    public void begin() throws NotSupportedException, SystemException{
 
         if (Globals.log) logger.info("Starting begin from {}", Thread.currentThread());
         if(Globals.threadTxMap.containsKey(Thread.currentThread())){

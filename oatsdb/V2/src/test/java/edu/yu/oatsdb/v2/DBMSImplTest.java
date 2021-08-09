@@ -1,4 +1,4 @@
-package edu.yu.oatsdb.v1;
+package edu.yu.oatsdb.v2;
 
 import edu.yu.oatsdb.base.*;
 import org.junit.Test;
@@ -17,8 +17,8 @@ public class DBMSImplTest {
 
     @Before
     public void before() throws InstantiationException {
-        db = (ConfigurableDBMS) OATSDBType.dbmsFactory(OATSDBType.V1);
-        txMgr = OATSDBType.txMgrFactory(OATSDBType.V1);
+        db = (ConfigurableDBMS) OATSDBType.dbmsFactory(OATSDBType.V2);
+        txMgr = OATSDBType.txMgrFactory(OATSDBType.V2);
     }
     @After
     public void after() throws InstantiationException {
