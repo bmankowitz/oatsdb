@@ -107,7 +107,7 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
         }
     }
 
-    private synchronized void unlockAndSetKeys(TxStatus status) throws SystemException{
+    private void unlockAndSetKeys(TxStatus status) throws SystemException{
         //for commit/rollback: remove the lock on these keys
         //for committing:
         if(keysInTx.get() == null) return;

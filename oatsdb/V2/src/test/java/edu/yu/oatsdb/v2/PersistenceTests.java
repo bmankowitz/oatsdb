@@ -28,10 +28,11 @@ public class PersistenceTests {
         txMgr = null;
     }
     @Test
+    @Deprecated
     public void simpleMasterTest() throws SystemException{
         HashMap<String, Long> map = new HashMap<>();
         map.put("tet", 23L);
-        Globals.setMasterValues(map);
+//        Globals.setMasterValues(map);
     }
     @Test
     public void simpleWriteTempTest() throws SystemException{
@@ -61,6 +62,14 @@ public class PersistenceTests {
     }
     @Test
     public void simpleReadStorageTest() throws InstantiationException, SystemException, NotSupportedException,
+            RollbackException {
+        Globals.readStorage();
+        txMgr.begin();
+        Assert.assertNotNull(db.getMap("grades", Character.class,String.class));
+        txMgr.commit();
+    }
+    @Test
+    public void getFileWriteTime() throws InstantiationException, SystemException, NotSupportedException,
             RollbackException {
         Globals.readStorage();
         txMgr.begin();

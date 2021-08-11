@@ -17,7 +17,7 @@ import static org.junit.Assert.*;
 
 
 public class ConcurrentTest {
-    ConfigurableDBMS db;
+    ConfigurablePersistentDBMS db;
     TxMgr txMgr;
     int i;
     Map<Character, String> gradeDetail;
@@ -34,7 +34,7 @@ public class ConcurrentTest {
      */
     @Before
     public void before() throws InstantiationException, SystemException, NotSupportedException, RollbackException {
-        db = (ConfigurableDBMS) OATSDBType.dbmsFactory(OATSDBType.V2);
+        db = (ConfigurablePersistentDBMS) OATSDBType.dbmsFactory(OATSDBType.V2);
         txMgr = OATSDBType.txMgrFactory(OATSDBType.V2);
         txMgr.begin();
         try {
@@ -47,6 +47,7 @@ public class ConcurrentTest {
     @After
     public void after(){
         //TODO: Create a clear method that will destroy the database and transactions
+        //db.clear();
     }
 
 

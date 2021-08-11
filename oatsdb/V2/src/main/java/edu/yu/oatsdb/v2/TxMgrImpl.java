@@ -24,7 +24,7 @@ public enum TxMgrImpl implements TxMgr {
             e.printStackTrace();
             throw e;
         }
-        final TxImpl newTx = new TxImpl(Thread.currentThread());
+        final TxImpl newTx = new TxImpl(Thread.currentThread(), Globals.txIdGenerator.getAndIncrement());
         Globals.threadTxMap.put(Thread.currentThread(), newTx);
 
         newTx.setStatus(TxStatus.ACTIVE);
@@ -78,7 +78,7 @@ public enum TxMgrImpl implements TxMgr {
 
     public Tx getTx() throws SystemException {
         if(Globals.threadTxMap.get(Thread.currentThread()) == null){
-            final TxImpl fakeTx = new TxImpl(null );
+            final TxImpl fakeTx = new TxImpl(null, -1 );
             fakeTx.setStatus(TxStatus.NO_TRANSACTION);
             return fakeTx;
         }

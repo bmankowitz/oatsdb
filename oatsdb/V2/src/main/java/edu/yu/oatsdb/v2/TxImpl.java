@@ -11,11 +11,14 @@ import java.io.Serializable;
 public class TxImpl implements Tx, Serializable {
     final Thread txThread;
     TxStatus status = TxStatus.NO_TRANSACTION; //default value
+    final int id;
     //A transaction is a series of DB commands.
-    public TxImpl(Thread thread){
+    public TxImpl(Thread thread, int id){
         setStatus(TxStatus.NO_TRANSACTION);
         txThread = thread;
+        this.id = id;
     }
+
 
 
     public TxStatus getStatus() throws SystemException{

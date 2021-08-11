@@ -1,7 +1,6 @@
 package edu.yu.oatsdb.v2;
 
 import edu.yu.oatsdb.base.SystemException;
-import edu.yu.oatsdb.v2.DBTableMetadata;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -10,6 +9,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @SuppressWarnings("all")
 public class Globals {
@@ -22,6 +22,7 @@ public class Globals {
     public static final boolean log = true;
     private final static Logger logger = LogManager.getLogger(Globals.class);
     public static int lockingTimeout = 5000;
+    public static final AtomicInteger txIdGenerator = new AtomicInteger(0);
 
     protected static boolean alreadyExists(String name){
         return nameTables.keySet().contains(name);
@@ -71,7 +72,7 @@ public class Globals {
             masterMapping.put(table.tableName, Thread.currentThread().getId());
         }
         //We assume this is an "atomic" write
-        setMasterValues(masterMapping);
+        //setMasterValues(masterMapping);
     }
 
     protected static void revertThreadTables(){
@@ -182,37 +183,49 @@ public class Globals {
             throw new SystemException(e.toString());
         }
     }
-    public static void setMasterValues(HashMap<String, Long> mapping) throws SystemException{
-        HashMap<String, Long> existingMap;
-        try {
-            final File dir = new File("storage");
-            final File file = new File (dir, "master");
-            if(!dir.exists()){
-                dir.mkdir();
-                if(Globals.log) logger.debug("creating storage dir");
-            }
+    private static synchronized void setMasterValues(HashMap<String, Long> mapping) throws SystemException{
+        final HashMap<String, Long> mapOnDisk;
+        final HashMap<String, Long> mapToWrite;
+        final File storageDir = new File("storage");
+        final File masterFile = new File (storageDir, "master");
 
-            if(file.exists()) {
-                if(Globals.log) logger.info("Master file exists");
-                FileInputStream fis = new FileInputStream(file);
-                ObjectInputStream ois = new ObjectInputStream(fis);
-                existingMap = (HashMap<String, Long>) ois.readObject();
-                if(Globals.log) logger.info("Existing master file {}", existingMap);
+        if (!storageDir.exists()) {
+            storageDir.mkdir();
+            if (Globals.log) logger.debug("creating storage dir");
+        }
+
+        if(masterFile.exists()) {
+            try (final FileInputStream fis = new FileInputStream(masterFile);
+                 final ObjectInputStream ois = new ObjectInputStream(fis);) {
+
+                if (Globals.log) logger.info("Master file exists");
+                mapOnDisk = (HashMap<String, Long>) ois.readObject();
                 ois.close();
-                existingMap.putAll(mapping);
-            }
-            else{
-                if(Globals.log) logger.info("Master file does not exist");
-                existingMap = new HashMap<>(mapping);
-            }
+                if (Globals.log) logger.info("Existing master file: {}", mapOnDisk);
+                mapOnDisk.putAll(mapping);
 
-            final FileOutputStream fos = new FileOutputStream(file);
-            final ObjectOutputStream oos = new ObjectOutputStream(fos);
-            oos.writeObject(existingMap);
+            } catch (IOException | ClassNotFoundException e) {
+                if (Globals.log) logger.error("Encountered error reading master file: {}", e.getMessage());
+                throw new SystemException("Error reading master file: \n" + e.toString());
+            }
+        }
+        else {
+            if (Globals.log) logger.info("Master file does not exist");
+            mapOnDisk = new HashMap<>(mapping);
+        }
+
+        try(final FileOutputStream fos = new FileOutputStream(masterFile);
+            final ObjectOutputStream oos = new ObjectOutputStream(fos);) {
+
+            oos.writeObject(mapOnDisk);
             oos.close();
-            if(Globals.log) logger.info("Finished writing master: {}", existingMap);
-
-        } catch (IOException | ClassNotFoundException e){ throw new SystemException(e.toString()); }
+            if (Globals.log) logger.info("Finished writing master: {}", mapOnDisk);
+        } catch (IOException e){
+            if(Globals.log) logger.error("Encountered error writing master file {}", e.getMessage());
+            throw new SystemException("Error reading master file: \n" + e.toString());
+        }
 
     }
+
 }
+

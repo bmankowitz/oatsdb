@@ -3,7 +3,7 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/oatsdb.iml" filepath="$PROJECT_DIR$/.idea/oatsdb.iml" />
-      <module fileurl="file://$PROJECT_DIR$/oatsdb/V1/v1.iml" filepath="$PROJECT_DIR$/oatsdb/V1/v1.iml" />
+      <module fileurl="file://$PROJECT_DIR$/oatsdb/V2/v2.iml" filepath="$PROJECT_DIR$/oatsdb/V2/v2.iml" />
     </modules>
   </component>
 </project>
