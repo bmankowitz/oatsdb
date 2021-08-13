@@ -11,17 +11,18 @@ class UnserializableObject{
     transient int i = 3;
 }
 public class DBMSImplTest {
-    ConfigurableDBMS db;
+    ConfigurablePersistentDBMS db;
     TxMgr txMgr;
     int i;
 
     @Before
     public void before() throws InstantiationException {
-        db = (ConfigurableDBMS) OATSDBType.dbmsFactory(OATSDBType.V2);
+        db = (ConfigurablePersistentDBMS) OATSDBType.dbmsFactory(OATSDBType.V2);
         txMgr = OATSDBType.txMgrFactory(OATSDBType.V2);
     }
     @After
     public void after() throws InstantiationException {
+        db.clear();
         db = null;
         txMgr = null;
     }

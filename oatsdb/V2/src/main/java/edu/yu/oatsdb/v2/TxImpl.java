@@ -9,13 +9,11 @@ import edu.yu.oatsdb.base.TxStatus;
 import java.io.Serializable;
 
 public class TxImpl implements Tx, Serializable {
-    final Thread txThread;
     TxStatus status = TxStatus.NO_TRANSACTION; //default value
     final int id;
     //A transaction is a series of DB commands.
-    public TxImpl(Thread thread, int id){
+    public TxImpl(int id){
         setStatus(TxStatus.NO_TRANSACTION);
-        txThread = thread;
         this.id = id;
     }
 
@@ -23,6 +21,9 @@ public class TxImpl implements Tx, Serializable {
 
     public TxStatus getStatus() throws SystemException{
         return status;
+    }
+    public boolean rollingBack(){
+        return (status == TxStatus.ROLLING_BACK || status == TxStatus.ROLLEDBACK);
     }
 
     public TxCompletionStatus getCompletionStatus() {

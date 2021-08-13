@@ -11,7 +11,7 @@ import java.util.Map;
 import static org.junit.Assert.*;
 
 public class DBTableTest {
-    DBMS db;
+    ConfigurablePersistentDBMS db;
     TxMgr txMgr;
     Map<Character, String> gradeDetail;
     int i;
@@ -19,7 +19,7 @@ public class DBTableTest {
 
     @Before
     public void before() throws InstantiationException, SystemException, NotSupportedException, RollbackException {
-        db = OATSDBType.dbmsFactory(OATSDBType.V2);
+        db = (ConfigurablePersistentDBMS) OATSDBType.dbmsFactory(OATSDBType.V2);
         txMgr = OATSDBType.txMgrFactory(OATSDBType.V2);
         txMgr.begin();
         gradeDetail = db.createMap("grades", Character.class, String.class);
@@ -31,6 +31,7 @@ public class DBTableTest {
 
     @After
     public void after() throws InstantiationException {
+        db.clear();
         db = null;
         txMgr = null;
     }

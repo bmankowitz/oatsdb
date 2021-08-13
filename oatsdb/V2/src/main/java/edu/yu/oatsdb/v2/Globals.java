@@ -5,9 +5,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.io.*;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -23,6 +21,10 @@ public class Globals {
     private final static Logger logger = LogManager.getLogger(Globals.class);
     public static int lockingTimeout = 5000;
     public static final AtomicInteger txIdGenerator = new AtomicInteger(0);
+    public static final AtomicInteger commitOrdinal = new AtomicInteger(0);
+
+    private final static File storageDir = new File("storage");
+    private final static Set<Integer> excludedCommits = ConcurrentHashMap.newKeySet();
 
     protected static boolean alreadyExists(String name){
         return nameTables.keySet().contains(name);
@@ -58,28 +60,20 @@ public class Globals {
     }
 
     protected static void commitThreadTables() throws SystemException{
-//        if (Globals.log) logger.info("Committing threads (GLOBALS) for {}, id= {}", Thread.currentThread() );
-//        threadTableMap.computeIfPresent(Thread.currentThread(), (key, value) ->{
-//            value.forEach(DBTable::commitCurrentTable);
-//            return null;
-//        });
-        HashMap<String, Long> masterMapping = new HashMap<>();
+
         Set<DBTable> tables = threadTableMap.remove(Thread.currentThread());
         //if this thread didn't touch any tables, nothing to commit
         if(tables == null) return;
         for(DBTable table : tables){
             table.commitCurrentTable();
-            masterMapping.put(table.tableName, Thread.currentThread().getId());
         }
+
         //We assume this is an "atomic" write
-        //setMasterValues(masterMapping);
+        setCommitted(Globals.threadTxMap.get(Thread.currentThread()).id);
     }
 
     protected static void revertThreadTables(){
-//        threadTableMap.computeIfPresent(Thread.currentThread(), (key, value) ->{
-//            value.forEach(DBTable::rollbackCurrentTable);
-//            return null;
-//        });
+
         Set<DBTable> tables = threadTableMap.get(Thread.currentThread());
         //if this thread didn't touch any tables, nothing to commit
         if(tables == null) return;
@@ -91,52 +85,84 @@ public class Globals {
         nameTables.forEach( (key, value) -> {
             value = null;
         });
+        nameTables.clear();
+        txIdGenerator.set(0);
+        threadTxMap.clear();
+        threadTableMap.clear();
     }
-    public static void readStorage() throws SystemException{
-        HashMap<String, Long> existingMasterMap;
+    public static void readStorage(){
+        //general plan: get a list of every map.
+        //Filter out the maps that don't have a matching commit file
+        //sort by the TxID (or perhaps add in a new commitID (on commit not creation))
+        //create a new DB table for each map, then add all of them.
         try {
             File dir = new File("storage");
-            File file = new File (dir, "master");
             if(!dir.exists()){
-                if(Globals.log) logger.debug("No storage directory. Aborting recovery.");
+                if(Globals.log) logger.info("No storage directory. Aborting recovery.");
                 return;
             }
-
-            if(file.exists()) {
-                if(Globals.log) logger.info("Master file exists");
-                FileInputStream fis = new FileInputStream(file);
-                ObjectInputStream ois = new ObjectInputStream(fis);
-                existingMasterMap = (HashMap<String, Long>) ois.readObject();
-                if(Globals.log) logger.info("Existing master file {}", existingMasterMap);
+            HashMap<String, ArrayList<DBTableMetadata>> mapCommits = new HashMap<String, ArrayList<DBTableMetadata>>();
+            List<String> allFileNames = Arrays.asList(dir.list());
+            HashSet<String> mapNames = new HashSet<>();
+            HashSet<String> validCommitIDs = new HashSet<>();
+            ArrayList<String> verifiedCommitNames = new ArrayList<>();
+            allFileNames.forEach( (fileName) -> {
+                if(fileName.matches("[0-9]+-[\\w]+")){
+                    String name = fileName.substring(fileName.indexOf('-')+1, fileName.length());
+                    mapNames.add(name);
+                }
+                if(fileName.matches("[0-9]+$")) validCommitIDs.add(fileName);
+            });
+            //add the mapNames to the commitmap hashmap
+            for (String name : mapNames) {
+                mapCommits.put(name, new ArrayList<>());
             }
-            else{
-                if(Globals.log) logger.info("Master file does not exist");
-                return;
-            }
 
-            for(Map.Entry<String, Long> entry : existingMasterMap.entrySet()) {
-                String key = entry.getKey();
-                Long value = entry.getValue();
-                String fileName = value + "-" + key;
-                if(Globals.log) logger.info("Attempting to read file {}", fileName);
-                //begin by reading in the table if it exists:
-                File mapFile = new File(dir, fileName);
-                FileInputStream fis = new FileInputStream(mapFile);
-                ObjectInputStream ois = new ObjectInputStream(fis);
-                DBTableMetadata metaTable = (DBTableMetadata) ois.readObject();
-                //let's start by creating the object:
-                DBTable table = new DBTable<>(metaTable.tableName, metaTable.keyClass, metaTable.valueClass);
+            //now that we have all valid commits, need to remove invalid ones
+            for (String allFileName : allFileNames) {
+                StringTokenizer strtok = new StringTokenizer(allFileName, "-");
+                if (validCommitIDs.contains(strtok.nextToken())) {
+                    if (strtok.hasMoreTokens()) {
+                        if (Globals.log) logger.debug("Trying to add file {}", allFileName);
+                            File file = new File(dir, allFileName);
+                            FileInputStream fis = new FileInputStream(file);
+                            ObjectInputStream ois = new ObjectInputStream(fis);
+                            DBTableMetadata thisTable = (DBTableMetadata) ois.readObject();
+                            mapCommits.get(strtok.nextToken()).add(thisTable);
+                            continue;
+                    }
+                    if (Globals.log) logger.info("Skipping unverified file {}", allFileName);
+                }
+                if (Globals.log) logger.debug("Skipping commit verfication file {}", allFileName);
+            }
+            //now we have a list of map names and all of their commits. Time to create it:
+            for(Map.Entry<String, ArrayList<DBTableMetadata>> entry : mapCommits.entrySet()) {
+                String mapName = entry.getKey();
+                if(Globals.log) logger.info("Starting to import commits on map {}", mapName);
+                //Sort by commitOrdinal:
+                Collections.sort(entry.getValue());
+                //create a table
+                if(entry.getValue().isEmpty()) continue;
+                DBTableMetadata first = entry.getValue().get(0);
+
+                DBTable table = new DBTable<>(first.tableName, first.keyClass, first.valueClass);
                 //set the object's types:
-                Globals.addNameTable(metaTable.tableName, table);
-                Globals.addTableToThread(metaTable.tableName);
-                //now we need to add the existing values:
-                table.putAll(metaTable.map);
-                //DONE!
-                if(Globals.log) logger.debug("Finished importing table {} with tid {} and MetaTable: {}",
-                        metaTable.tableName, value, metaTable);
-            }
+                Globals.addNameTable(first.tableName, table);
+                Globals.addTableToThread(first.tableName);
+                //begin by reading in every commit:
+                for(DBTableMetadata metaTable: entry.getValue()){
+                    if(Globals.log) logger.info("Inserting txID {} for map {}", metaTable.txID, mapName);
+                    table.putAll(metaTable.map);
+                };
 
-        } catch (IOException | ClassNotFoundException e){ throw new SystemException(e.toString()); }
+                //DONE!
+                if(Globals.log) logger.info("Finished importing table {}",
+                        mapName);
+            }
+        } catch (IOException | ClassNotFoundException e){
+            logger.error("IO error while trying to load data from disk. Aborting recovery and deleting files.");
+            logger.error(e);
+            clearStorage(); }
     }
     public static long getStorageSize() {
         long length = 0;
@@ -164,9 +190,9 @@ public class Globals {
         }
         if(Globals.log) logger.debug("Done deleting files");
     }
-    public synchronized static void writeTempMap(DBTableMetadata table) throws SystemException{
+    public static void writeTempMap(DBTableMetadata table) throws SystemException{
         StringBuilder fileName = new StringBuilder();
-        fileName.append(Thread.currentThread().getId()).append("-").append(table.tableName);
+        fileName.append(table.txID).append("-").append(table.tableName);
         try{
             File dir = new File("storage");
             File file = new File (dir, fileName.toString());
@@ -183,46 +209,33 @@ public class Globals {
             throw new SystemException(e.toString());
         }
     }
-    private static synchronized void setMasterValues(HashMap<String, Long> mapping) throws SystemException{
-        final HashMap<String, Long> mapOnDisk;
-        final HashMap<String, Long> mapToWrite;
-        final File storageDir = new File("storage");
-        final File masterFile = new File (storageDir, "master");
-
+    private static void createStorageIfNotExists() throws SystemException {
         if (!storageDir.exists()) {
-            storageDir.mkdir();
             if (Globals.log) logger.debug("creating storage dir");
+            storageDir.mkdir();
         }
+    }
 
-        if(masterFile.exists()) {
-            try (final FileInputStream fis = new FileInputStream(masterFile);
-                 final ObjectInputStream ois = new ObjectInputStream(fis);) {
 
-                if (Globals.log) logger.info("Master file exists");
-                mapOnDisk = (HashMap<String, Long>) ois.readObject();
-                ois.close();
-                if (Globals.log) logger.info("Existing master file: {}", mapOnDisk);
-                mapOnDisk.putAll(mapping);
+    private static void setCommitted(final int txID) throws SystemException{
+        //the txIDs are INVALID tx, not valid ones.
+        final File testMultipartCommit = new File(storageDir, Integer.toString(txID));
+        createStorageIfNotExists();
 
-            } catch (IOException | ClassNotFoundException e) {
-                if (Globals.log) logger.error("Encountered error reading master file: {}", e.getMessage());
-                throw new SystemException("Error reading master file: \n" + e.toString());
-            }
-        }
-        else {
-            if (Globals.log) logger.info("Master file does not exist");
-            mapOnDisk = new HashMap<>(mapping);
-        }
+        if (Globals.log) logger.info("Adding new txID {}", txID);
 
-        try(final FileOutputStream fos = new FileOutputStream(masterFile);
-            final ObjectOutputStream oos = new ObjectOutputStream(fos);) {
 
-            oos.writeObject(mapOnDisk);
-            oos.close();
-            if (Globals.log) logger.info("Finished writing master: {}", mapOnDisk);
+        //basic plan: first write out the tables 144-grades, 144-obj, etc.
+        //Then, when everything is written out, add in the tx number. This will ensure the Tx is valid.
+        // example: 144
+        //may be a good idea to collate everything at the end.
+        try {
+            testMultipartCommit.createNewFile();
+            if (Globals.log) logger.info("Finished writing commit: {}", testMultipartCommit.getName());
         } catch (IOException e){
-            if(Globals.log) logger.error("Encountered error writing master file {}", e.getMessage());
-            throw new SystemException("Error reading master file: \n" + e.toString());
+            if(Globals.log) logger.error("Encountered error writing file {}:  {}",
+                    testMultipartCommit.getName(), e.getMessage());
+            throw new SystemException("Error reading file: \n" + e.toString());
         }
 
     }

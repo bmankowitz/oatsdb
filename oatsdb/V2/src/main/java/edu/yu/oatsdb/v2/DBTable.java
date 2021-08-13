@@ -1,9 +1,6 @@
 package edu.yu.oatsdb.v2;
 
-import edu.yu.oatsdb.base.ClientNotInTxException;
-import edu.yu.oatsdb.base.ClientTxRolledBackException;
-import edu.yu.oatsdb.base.SystemException;
-import edu.yu.oatsdb.base.TxStatus;
+import edu.yu.oatsdb.base.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -29,18 +26,15 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
     private final ConcurrentHashMap<K, V> official = new ConcurrentHashMap<>(); //The single, primary hashmap
     // FIXME: 7/27/2021 REPLACE HASHSET WITH ConcurrentLinkedQueue for thread safety
     private final ConcurrentHashMap<K, ReentrantLock> lockedKeys = new ConcurrentHashMap<>();
-    //private final ConcurrentHashMap<Thread, HashSet<K>> keysInTx = new ConcurrentHashMap<>();
-//    private final ConcurrentHashMap<Thread, HashMap<K,V>> shadow = new ConcurrentHashMap<>();
-    private volatile ThreadLocal<HashSet<K>> keysInTx = ThreadLocal.withInitial(HashSet::new);
-    private volatile ThreadLocal<HashMap<K, V>> shadow = ThreadLocal.withInitial(HashMap::new);
+    private final ThreadLocal<HashSet<K>> keysInTx = ThreadLocal.withInitial(HashSet::new);
+    private final ThreadLocal<HashMap<K, V>> shadow = ThreadLocal.withInitial(HashMap::new);
     protected final AtomicBoolean readyForUse = new AtomicBoolean(false);
-    public Set<K> exists = ConcurrentHashMap.newKeySet();
+    public final Set<K> exists = ConcurrentHashMap.newKeySet();
     protected final String tableName;
     protected final Class<K> keyClass;
     protected final Class<V> valueClass;
     private final static Logger logger = LogManager.getLogger(DBTable.class);
-    //THE PROBLEM IS THE SAME THREAD USING MULTIPLE MAPS!!!!
-    //THREADLOCAL IS SHARED BETWEEN THE DIFFERENT MAPS, SO THE KEYS ARE RESET WHEN SWITCHING MAPS
+
 
 
     @SuppressWarnings("unchecked")
@@ -111,6 +105,7 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
         //for commit/rollback: remove the lock on these keys
         //for committing:
         if(keysInTx.get() == null) return;
+        final int commitOrdinal = Globals.commitOrdinal.getAndIncrement();
         for (K key : keysInTx.get()) {
             if (Globals.log) logger.debug("Unlocking and setting {} -> {}", key,
                     shadow.get().get(key));
@@ -134,8 +129,8 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
                     key, official.get(key));
         }
         //finished setting the official table. Now need to propagate official table to temp-disk
-        if(status == TxStatus.COMMITTING) Globals.writeTempMap(new DBTableMetadata(tableName, keyClass, valueClass,
-                official));
+        if(status == TxStatus.COMMITTING) Globals.writeTempMap(new DBTableMetadata<>(tableName, keyClass, valueClass,
+                shadow.get(), Globals.threadTxMap.get(Thread.currentThread()).id, commitOrdinal));
 
         //now we need to reset shadow db and keysInTx:
         shadow.remove();
@@ -143,7 +138,6 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
         keysInTx.remove();
 
         readyForUse.set(true);
-
 
     }
 
@@ -183,7 +177,7 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
                         key, shadow.get().get(key), official.get(key), method);
                 if(method == methodType.GET) return shadow.get().get(key);
                 if(method == methodType.PUT) return shadow.get().put(key, value);
-                if(method == methodType.REMOVE) return shadow.get().remove(key);
+                if(method == methodType.REMOVE) return shadow.get().put(key, null);
             }
             else{
                 //we were unable to acquire the lock in the given time
@@ -297,7 +291,11 @@ public class DBTable<K, V> implements Serializable, Map<K, V> {
     }
     public void putAll(Map<? extends K, ? extends V> m) {
         //TODO: does this need to be in a transaction?
-        official.putAll(m);
+        m.forEach( (key, value) -> {
+            logger.info("Assessing key {} and value {}", key, value);
+            if(key != null && value != null) official.put(key, value);
+            if(key != null && value == null) official.remove(key);
+        });
     }
     public void clear() {
         throw new RuntimeException("YouCan'tHaveItException");

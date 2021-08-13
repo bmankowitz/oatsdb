@@ -24,7 +24,7 @@ public class ConcurrentTest {
     Map<Character, String> objectMap;
     Map<Character, String> objectMap2;
     private final static Logger logger = LogManager.getLogger(ConcurrentTest.class);
-    public static AtomicBoolean killProcess = new AtomicBoolean(false);
+    public static final AtomicBoolean killProcess = new AtomicBoolean(false);
     /**This initializer method creates the OATS database and Transaction Manager,
      * as well as creating three different empty maps.
      * @throws InstantiationException
@@ -47,7 +47,7 @@ public class ConcurrentTest {
     @After
     public void after(){
         //TODO: Create a clear method that will destroy the database and transactions
-        //db.clear();
+        db.clear();
     }
 
 
@@ -96,7 +96,7 @@ public class ConcurrentTest {
                 throw new RuntimeException();
             } catch (Throwable e){
                 if (Globals.log) logger.error("ERROR - caught general Exception {}", e.getMessage());
-                e.printStackTrace(); Thread.currentThread().stop();};
+                e.printStackTrace(); Thread.currentThread().stop();}
 
         }
     }
@@ -124,7 +124,7 @@ Runtime.getRuntime().halt(-34);
                 killProcess.set(true);
                 e.printStackTrace();
                 throw new RuntimeException();
-            } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();};
+            } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();}
 
 
         }
@@ -300,31 +300,28 @@ Runtime.getRuntime().halt(-34);
         ArrayList<Future<Void>> futures = new ArrayList<>();
         for (int i = 0; i < NUM_TIMES; i++) {
             if(killProcess.get()) break;
-            Runnable setI = new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        txMgr.begin();
-                        objectMap = db.getMap("obj", Character.class, String.class);
-                        objectMap.put('A', "First tx");
-                        txMgr.commit();
-                        txMgr.begin();
-                        objectMap.put('B', "Second tx");
-                        txMgr.commit();
-                        txMgr.begin();
-                        objectMap.put('C', "Third tx");
-                        txMgr.commit();
-                    } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
-                            | SystemException | ClientTxRolledBackException e) {
-                        e.printStackTrace();
-                        Runtime.getRuntime().halt(-34);
-                        fail();
-                        executor.shutdownNow();
-                        killProcess.set(true);
-                        e.printStackTrace();
-                        throw new RuntimeException();
-                    } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();};
-                }
+            Runnable setI = () -> {
+                try {
+                    txMgr.begin();
+                    objectMap = db.getMap("obj", Character.class, String.class);
+                    objectMap.put('A', "First tx");
+                    txMgr.commit();
+                    txMgr.begin();
+                    objectMap.put('B', "Second tx");
+                    txMgr.commit();
+                    txMgr.begin();
+                    objectMap.put('C', "Third tx");
+                    txMgr.commit();
+                } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                        | SystemException | ClientTxRolledBackException e) {
+                    e.printStackTrace();
+                    Runtime.getRuntime().halt(-34);
+                    fail();
+                    executor.shutdownNow();
+                    killProcess.set(true);
+                    e.printStackTrace();
+                    throw new RuntimeException();
+                } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();}
             };
             futures.add((Future<Void>) executor.submit(setI));}
         executor.shutdown();
@@ -347,59 +344,53 @@ Runtime.getRuntime().halt(-34);
     public void txProgressCommitVisibleToOtherThread() throws SystemException, NotSupportedException, RollbackException, ExecutionException, InterruptedException {
         int MY_THREADS = 2;
         ExecutorService executor = Executors.newFixedThreadPool(MY_THREADS);
-        Runnable addA = new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    txMgr.begin();
-                    System.out.println("Setting A");
-                    objectMap = db.getMap("obj", Character.class, String.class);
-                    objectMap.put('A', "Set");
-                    System.out.println("Set A");
-                    System.out.println("Sleeping");
-                    Thread.sleep(50);
-                    System.out.println("Awake");
-                    txMgr.commit();
-                } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
-                        | SystemException | ClientTxRolledBackException e) {
-                    e.printStackTrace();
-                    fail();
+        Runnable addA = () -> {
+            try {
+                txMgr.begin();
+                System.out.println("Setting A");
+                objectMap = db.getMap("obj", Character.class, String.class);
+                objectMap.put('A', "Set");
+                System.out.println("Set A");
+                System.out.println("Sleeping");
+                Thread.sleep(50);
+                System.out.println("Awake");
+                txMgr.commit();
+            } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                    | SystemException | ClientTxRolledBackException e) {
+                e.printStackTrace();
+                fail();
 Runtime.getRuntime().halt(-34);
-                    executor.shutdownNow();
-                    killProcess.set(true);
-                    e.printStackTrace();
-                    throw new RuntimeException();
-                } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();};
-            }
+                executor.shutdownNow();
+                killProcess.set(true);
+                e.printStackTrace();
+                throw new RuntimeException();
+            } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();}
         };
-        Runnable addB = new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    txMgr.begin();
-                    System.out.println("Setting B");
-                    objectMap = db.getMap("obj", Character.class, String.class);
-                    objectMap.put('B', "Set");
-                    System.out.println("Set B");
-                    txMgr.commit();
-                    txMgr.begin();
-                    System.out.println("Checking A: ");
-                    System.out.println(db.getMap("obj", Character.class, String.class).get('A'));
-                    assertEquals("Set", db.getMap("obj", Character.class, String.class).get('A'));
-                    System.out.println("Checked A");
-                    txMgr.commit();
-                    Thread.sleep(50);
-                } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
-                        | SystemException | ClientTxRolledBackException e) {
-                    e.printStackTrace();
-                    fail();
+        Runnable addB = () -> {
+            try {
+                txMgr.begin();
+                System.out.println("Setting B");
+                objectMap = db.getMap("obj", Character.class, String.class);
+                objectMap.put('B', "Set");
+                System.out.println("Set B");
+                txMgr.commit();
+                txMgr.begin();
+                System.out.println("Checking A: ");
+                System.out.println(db.getMap("obj", Character.class, String.class).get('A'));
+                assertEquals("Set", db.getMap("obj", Character.class, String.class).get('A'));
+                System.out.println("Checked A");
+                txMgr.commit();
+                Thread.sleep(50);
+            } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                    | SystemException | ClientTxRolledBackException e) {
+                e.printStackTrace();
+                fail();
 Runtime.getRuntime().halt(-34);
-                    executor.shutdownNow();
-                    killProcess.set(true);
-                    e.printStackTrace();
-                    throw new RuntimeException();
-                } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();};
-            }
+                executor.shutdownNow();
+                killProcess.set(true);
+                e.printStackTrace();
+                throw new RuntimeException();
+            } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();}
         };
         Future<Void> future = (Future<Void>) executor.submit(addA);
         Future<Void> future1 = (Future<Void>) executor.submit(addB);
@@ -426,58 +417,52 @@ Runtime.getRuntime().halt(-34);
     public void txProgressInvisibleToOtherThreadMultipleMaps() throws SystemException, NotSupportedException, RollbackException, ExecutionException, InterruptedException {
         int MY_THREADS = 2;
         ExecutorService executor = Executors.newFixedThreadPool(MY_THREADS);
-        Runnable addA = new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    txMgr.begin();
-                    if (Globals.log) logger.info("Setting A");
-                    objectMap = db.getMap("obj", Character.class, String.class);
-                    objectMap2 = db.getMap("obj2", Character.class, String.class);
-                    objectMap.put('A', "Set");
-                    objectMap2.put('A',"Set");
-                    if (Globals.log) logger.info("Set A");
-                    if (Globals.log) logger.info("About to sleep");
-                    Thread.sleep(300);
-                    if (Globals.log) logger.info("Awake");
-                    if (Globals.log) logger.info("Committing A");
-                    txMgr.commit();
-                    if (Globals.log) logger.info("Committed A");
-                } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
-                        | SystemException | ClientTxRolledBackException e) {
-                    e.printStackTrace();
-                    fail();
+        Runnable addA = () -> {
+            try {
+                txMgr.begin();
+                if (Globals.log) logger.info("Setting A");
+                objectMap = db.getMap("obj", Character.class, String.class);
+                objectMap2 = db.getMap("obj2", Character.class, String.class);
+                objectMap.put('A', "Set");
+                objectMap2.put('A',"Set");
+                if (Globals.log) logger.info("Set A");
+                if (Globals.log) logger.info("About to sleep");
+                Thread.sleep(300);
+                if (Globals.log) logger.info("Awake");
+                if (Globals.log) logger.info("Committing A");
+                txMgr.commit();
+                if (Globals.log) logger.info("Committed A");
+            } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                    | SystemException | ClientTxRolledBackException e) {
+                e.printStackTrace();
+                fail();
 Runtime.getRuntime().halt(-34);
-                    executor.shutdownNow();
-                    killProcess.set(true);
-                    e.printStackTrace();
-                    throw new RuntimeException();
-                } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();};
-            }
+                executor.shutdownNow();
+                killProcess.set(true);
+                e.printStackTrace();
+                throw new RuntimeException();
+            } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();}
         };
-        Runnable addB = new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    Thread.sleep(20);
-                    txMgr.begin();
-                    if (Globals.log) logger.info("Checking A");
-                    assertEquals("Set", db.getMap("obj", Character.class, String.class).get('A'));
-                    assertEquals("Set", db.getMap("obj2", Character.class, String.class).get('A'));
-                    if (Globals.log) logger.info("Committing B");
-                    txMgr.commit();
-                    if (Globals.log) logger.info("Committed B");
-                } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
-                        | SystemException | ClientTxRolledBackException e) {
-                    e.printStackTrace();
-                    fail();
+        Runnable addB = () -> {
+            try {
+                Thread.sleep(20);
+                txMgr.begin();
+                if (Globals.log) logger.info("Checking A");
+                assertEquals("Set", db.getMap("obj", Character.class, String.class).get('A'));
+                assertEquals("Set", db.getMap("obj2", Character.class, String.class).get('A'));
+                if (Globals.log) logger.info("Committing B");
+                txMgr.commit();
+                if (Globals.log) logger.info("Committed B");
+            } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                    | SystemException | ClientTxRolledBackException e) {
+                e.printStackTrace();
+                fail();
 Runtime.getRuntime().halt(-34);
-                    executor.shutdownNow();
-                    killProcess.set(true);
-                    e.printStackTrace();
-                    throw new RuntimeException();
-                } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();};
-            }
+                executor.shutdownNow();
+                killProcess.set(true);
+                e.printStackTrace();
+                throw new RuntimeException();
+            } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();}
         };
         Future<Void> future = (Future<Void>) executor.submit(addA);
         Future<Void> future1 = (Future<Void>) executor.submit(addB);
@@ -517,52 +502,46 @@ Runtime.getRuntime().halt(-34);
         txMgr.commit();
 
         ExecutorService executor = Executors.newFixedThreadPool(MY_THREADS);
-        Runnable addA = new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    txMgr.begin();
-                    System.out.println("Start Set1");
-                    objectMap = db.getMap("obj", Character.class, String.class);
-                    objectMap.put('C', "Set1");
-                    Thread.sleep(500);
-                    txMgr.commit();
-                    System.out.println("Finished Set1");
+        Runnable addA = () -> {
+            try {
+                txMgr.begin();
+                System.out.println("Start Set1");
+                objectMap = db.getMap("obj", Character.class, String.class);
+                objectMap.put('C', "Set1");
+                Thread.sleep(500);
+                txMgr.commit();
+                System.out.println("Finished Set1");
 
-                } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
-                        | SystemException | ClientTxRolledBackException e) {
-                    e.printStackTrace();
-                    fail();
+            } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                    | SystemException | ClientTxRolledBackException e) {
+                e.printStackTrace();
+                fail();
 Runtime.getRuntime().halt(-34);
-                    executor.shutdownNow();
-                    killProcess.set(true);
-                    e.printStackTrace();
-                    throw new RuntimeException();
-                } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();};
-            }
+                executor.shutdownNow();
+                killProcess.set(true);
+                e.printStackTrace();
+                throw new RuntimeException();
+            } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();}
         };
-        Runnable addB = new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    Thread.sleep(250);
-                    txMgr.begin();
-                    System.out.println("Start Set2");
-                    objectMap = db.getMap("obj", Character.class, String.class);
-                    objectMap.put('C', "Set2");
-                    txMgr.commit();
-                    System.out.println("Finished Set2");
-                } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
-                        | SystemException | ClientTxRolledBackException e) {
-                    e.printStackTrace();
-                    fail();
+        Runnable addB = () -> {
+            try {
+                Thread.sleep(250);
+                txMgr.begin();
+                System.out.println("Start Set2");
+                objectMap = db.getMap("obj", Character.class, String.class);
+                objectMap.put('C', "Set2");
+                txMgr.commit();
+                System.out.println("Finished Set2");
+            } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                    | SystemException | ClientTxRolledBackException e) {
+                e.printStackTrace();
+                fail();
 Runtime.getRuntime().halt(-34);
-                    executor.shutdownNow();
-                    killProcess.set(true);
-                    e.printStackTrace();
-                    throw new RuntimeException();
-                } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();};
-            }
+                executor.shutdownNow();
+                killProcess.set(true);
+                e.printStackTrace();
+                throw new RuntimeException();
+            } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();}
         };
         Future<Void> future = (Future<Void>) executor.submit(addA);
         Future<Void> future1 = (Future<Void>) executor.submit(addB);
@@ -596,52 +575,46 @@ Runtime.getRuntime().halt(-34);
         txMgr.commit();
 
         ExecutorService executor = Executors.newFixedThreadPool(MY_THREADS);
-        Runnable addA = new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    Thread.currentThread().setName("set1");
-                    txMgr.begin();
-                    System.out.println("Started Set1");
-                    objectMap = db.getMap("obj", Character.class, String.class);
-                    objectMap.put('C', "Set1");
-                    boolean test = true;
-                    Thread.sleep(6000);
-                    txMgr.commit();
-                    System.out.println("Finished Set1");
+        Runnable addA = () -> {
+            try {
+                Thread.currentThread().setName("set1");
+                txMgr.begin();
+                System.out.println("Started Set1");
+                objectMap = db.getMap("obj", Character.class, String.class);
+                objectMap.put('C', "Set1");
+                boolean test = true;
+                Thread.sleep(6000);
+                txMgr.commit();
+                System.out.println("Finished Set1");
 
-                } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException | SystemException | InterruptedException e) {
-                    e.printStackTrace();
-                    fail();
+            } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException | SystemException | InterruptedException e) {
+                e.printStackTrace();
+                fail();
 Runtime.getRuntime().halt(-34);
-                    executor.shutdownNow();
-                    killProcess.set(true);
-                    e.printStackTrace();
-                    throw new RuntimeException();
-                }
+                executor.shutdownNow();
+                killProcess.set(true);
+                e.printStackTrace();
+                throw new RuntimeException();
             }
         };
-        Runnable addB = new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    Thread.currentThread().setName("set2");
-                    Thread.sleep(250);
-                    txMgr.begin();
-                    System.out.println("Started Set2");
-                    objectMap = db.getMap("obj", Character.class, String.class);
-                    objectMap.put('C', "Set2");
-                    txMgr.commit();
-                    System.out.println("Finished Set2");
-                } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException | SystemException | InterruptedException e) {
-                    e.printStackTrace();
-                    fail();
+        Runnable addB = () -> {
+            try {
+                Thread.currentThread().setName("set2");
+                Thread.sleep(250);
+                txMgr.begin();
+                System.out.println("Started Set2");
+                objectMap = db.getMap("obj", Character.class, String.class);
+                objectMap.put('C', "Set2");
+                txMgr.commit();
+                System.out.println("Finished Set2");
+            } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException | SystemException | InterruptedException e) {
+                e.printStackTrace();
+                fail();
 Runtime.getRuntime().halt(-34);
-                    executor.shutdownNow();
-                    killProcess.set(true);
-                    e.printStackTrace();
-                    throw new RuntimeException();
-                }
+                executor.shutdownNow();
+                killProcess.set(true);
+                e.printStackTrace();
+                throw new RuntimeException();
             }
         };
         Future<Void> future = (Future<Void>) executor.submit(addA);
@@ -667,40 +640,34 @@ Runtime.getRuntime().halt(-34);
         txMgr.commit();
 
         ExecutorService executor = Executors.newFixedThreadPool(MY_THREADS);
-        Runnable addA = new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    Thread.currentThread().setName("setting");
-                    txMgr.begin();
-                    System.out.println("Started Set1");
-                    objectMap = db.getMap("obj", Character.class, String.class);
-                    objectMap.put('C', "Set1");
-                    Thread.sleep(6500);
-                    txMgr.commit();
-                    System.out.println("Finished Set1");
+        Runnable addA = () -> {
+            try {
+                Thread.currentThread().setName("setting");
+                txMgr.begin();
+                System.out.println("Started Set1");
+                objectMap = db.getMap("obj", Character.class, String.class);
+                objectMap.put('C', "Set1");
+                Thread.sleep(6500);
+                txMgr.commit();
+                System.out.println("Finished Set1");
 
-                } catch (InterruptedException | NotSupportedException | SystemException | RollbackException e){
-                    throw new RuntimeException(e.getCause());
-                } catch (ClientNotInTxException e){ exceptions.getAndIncrement();}
-            }
+            } catch (InterruptedException | NotSupportedException | SystemException | RollbackException e){
+                throw new RuntimeException(e.getCause());
+            } catch (ClientNotInTxException e){ exceptions.getAndIncrement();}
         };
-        Runnable addB = new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    Thread.currentThread().setName("checking");
-                    Thread.sleep(75);
-                    txMgr.begin();
-                    System.out.println("Started otherSet");
-                    objectMap = db.getMap("obj", Character.class, String.class);
-                    objectMap.put('C', "Set2");
-                    txMgr.commit();
-                    System.out.println("Finished otherSEt");
-                } catch (InterruptedException | NotSupportedException | SystemException | RollbackException e){
-                    throw new RuntimeException(e.getCause());
-                } catch (ClientTxRolledBackException e){ exceptions.getAndIncrement();}
-            }
+        Runnable addB = () -> {
+            try {
+                Thread.currentThread().setName("checking");
+                Thread.sleep(75);
+                txMgr.begin();
+                System.out.println("Started otherSet");
+                objectMap = db.getMap("obj", Character.class, String.class);
+                objectMap.put('C', "Set2");
+                txMgr.commit();
+                System.out.println("Finished otherSEt");
+            } catch (InterruptedException | NotSupportedException | SystemException | RollbackException e){
+                throw new RuntimeException(e.getCause());
+            } catch (ClientTxRolledBackException e){ exceptions.getAndIncrement();}
         };
         Future<Void> future = (Future<Void>) executor.submit(addA);
         ArrayList<Future<Void>> futures = new ArrayList<>();
@@ -721,56 +688,50 @@ Runtime.getRuntime().halt(-34);
     public void ensureLockedKeyIsBlocking() throws SystemException, NotSupportedException, RollbackException, ExecutionException, InterruptedException {
         int MY_THREADS = 2;
         ExecutorService executor = Executors.newFixedThreadPool(MY_THREADS);
-        Runnable addA = new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    txMgr.begin();
-                    objectMap.put('q', "Set");
-                    long startTime = System.currentTimeMillis();
-                    if (Globals.log) logger.info("Set a at {}", startTime);
-                    while (System.currentTimeMillis() - startTime < 500){}
-                    txMgr.commit();
-                    if (Globals.log) logger.info("committed a");
+        Runnable addA = () -> {
+            try {
+                txMgr.begin();
+                objectMap.put('q', "Set");
+                long startTime = System.currentTimeMillis();
+                if (Globals.log) logger.info("Set a at {}", startTime);
+                while (System.currentTimeMillis() - startTime < 500){}
+                txMgr.commit();
+                if (Globals.log) logger.info("committed a");
 
-                } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
-                        | SystemException | ClientTxRolledBackException e) {
-                    e.printStackTrace();
-                    fail();
+            } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                    | SystemException | ClientTxRolledBackException e) {
+                e.printStackTrace();
+                fail();
 Runtime.getRuntime().halt(-34);
-                    executor.shutdownNow();
-                    killProcess.set(true);
-                    e.printStackTrace();
-                    throw new RuntimeException();
-                } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();};
-            }
+                executor.shutdownNow();
+                killProcess.set(true);
+                e.printStackTrace();
+                throw new RuntimeException();
+            } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();}
         };
-        Runnable addB = new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    Thread.sleep(20);
-                    txMgr.begin();
-                    if (Globals.log) logger.info("Checking A");
-                    double start = System.currentTimeMillis();
-                    if (Globals.log) logger.info("Should now be waiting...");
-                    assertEquals("Set", objectMap.get('q'));
-                    double end = System.currentTimeMillis();
-                    if (Globals.log) logger.info("Checked A. Now checking time:");
-                    assertTrue( end - start < 1750);
-                    txMgr.commit();
-                    if (Globals.log) logger.info("Done!");
-                } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
-                        | SystemException | ClientTxRolledBackException e) {
-                    e.printStackTrace();
-                    fail();
+        Runnable addB = () -> {
+            try {
+                Thread.sleep(20);
+                txMgr.begin();
+                if (Globals.log) logger.info("Checking A");
+                double start = System.currentTimeMillis();
+                if (Globals.log) logger.info("Should now be waiting...");
+                assertEquals("Set", objectMap.get('q'));
+                double end = System.currentTimeMillis();
+                if (Globals.log) logger.info("Checked A. Now checking time:");
+                assertTrue( end - start < 1750);
+                txMgr.commit();
+                if (Globals.log) logger.info("Done!");
+            } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                    | SystemException | ClientTxRolledBackException e) {
+                e.printStackTrace();
+                fail();
 Runtime.getRuntime().halt(-34);
-                    executor.shutdownNow();
-                    killProcess.set(true);
-                    e.printStackTrace();
-                    throw new RuntimeException();
-                } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();};
-            }
+                executor.shutdownNow();
+                killProcess.set(true);
+                e.printStackTrace();
+                throw new RuntimeException();
+            } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();}
         };
         Future<Void> future = (Future<Void>) executor.submit(addA);
         Future<Void> future1 = (Future<Void>) executor.submit(addB);
@@ -792,45 +753,39 @@ Runtime.getRuntime().halt(-34);
         txMgr.commit();
 
         ExecutorService executor = Executors.newFixedThreadPool(MY_THREADS);
-        Runnable longCommit = new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    Thread.currentThread().setName("set1");
-                    txMgr.begin();
-                    System.out.println("Started Set1");
-                    objectMap = db.getMap("obj", Character.class, String.class);
-                    objectMap.put('C', "SetLongCommit");
-                    Thread.sleep(7500);
-                    txMgr.commit();
-                    System.out.println("Finished Set1");
+        Runnable longCommit = () -> {
+            try {
+                Thread.currentThread().setName("set1");
+                txMgr.begin();
+                System.out.println("Started Set1");
+                objectMap = db.getMap("obj", Character.class, String.class);
+                objectMap.put('C', "SetLongCommit");
+                Thread.sleep(7500);
+                txMgr.commit();
+                System.out.println("Finished Set1");
 
-                } catch (NotSupportedException | SystemException | RollbackException | InterruptedException e) {
-                    e.printStackTrace();
+            } catch (NotSupportedException | SystemException | RollbackException | InterruptedException e) {
+                e.printStackTrace();
 killProcess.set(true);
-                    throw new RuntimeException();
-                }
+                throw new RuntimeException();
             }
         };
-        Runnable shortCommit = new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    Thread.currentThread().setName("set2");
-                    Thread.sleep(250);
-                    txMgr.begin();
-                    System.out.println("Started Set2");
-                    objectMap = db.getMap("obj", Character.class, String.class);
-                    objectMap.put('C', "SetSecondCommit");
-                    fail("This tx should have timed out by now");
-                    txMgr.commit();
-                    System.out.println("Finished Set2");
-                } catch (NotSupportedException | SystemException | RollbackException | InterruptedException e) {
-                    fail();
-                    e.printStackTrace();
+        Runnable shortCommit = () -> {
+            try {
+                Thread.currentThread().setName("set2");
+                Thread.sleep(250);
+                txMgr.begin();
+                System.out.println("Started Set2");
+                objectMap = db.getMap("obj", Character.class, String.class);
+                objectMap.put('C', "SetSecondCommit");
+                fail("This tx should have timed out by now");
+                txMgr.commit();
+                System.out.println("Finished Set2");
+            } catch (NotSupportedException | SystemException | RollbackException | InterruptedException e) {
+                fail();
+                e.printStackTrace();
 killProcess.set(true);
-                    throw new RuntimeException();
-                }
+                throw new RuntimeException();
             }
         };
         Future<Void> longFuture = (Future<Void>) executor.submit(longCommit);
@@ -861,30 +816,27 @@ killProcess.set(true);
         txMgr.commit();
 
         ExecutorService executor = Executors.newFixedThreadPool(MY_THREADS);
-        Runnable addA = new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    Thread.currentThread().setName("set1");
-                    txMgr.begin();
-                    System.out.println("Started Set1");
-                    objectMap = db.getMap("obj", Character.class, String.class);
-                    objectMap.put('Y', "SetDuringLongCommit");
-                    Thread.sleep(6000);
-                    txMgr.commit();
-                    System.out.println("Finished Set1");
+        Runnable addA = () -> {
+            try {
+                Thread.currentThread().setName("set1");
+                txMgr.begin();
+                System.out.println("Started Set1");
+                objectMap = db.getMap("obj", Character.class, String.class);
+                objectMap.put('Y', "SetDuringLongCommit");
+                Thread.sleep(6000);
+                txMgr.commit();
+                System.out.println("Finished Set1");
 
-                } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
-                        | SystemException | ClientTxRolledBackException e) {
-                    e.printStackTrace();
-                    fail();
+            } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                    | SystemException | ClientTxRolledBackException e) {
+                e.printStackTrace();
+                fail();
 Runtime.getRuntime().halt(-34);
-                    executor.shutdownNow();
-                    killProcess.set(true);
-                    e.printStackTrace();
-                    throw new RuntimeException();
-                } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();};
-            }
+                executor.shutdownNow();
+                killProcess.set(true);
+                e.printStackTrace();
+                throw new RuntimeException();
+            } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();}
         };
 
         Future<Void> future = (Future<Void>) executor.submit(addA);
@@ -909,48 +861,42 @@ Runtime.getRuntime().halt(-34);
         objectMap = db.getMap("obj", Character.class, String.class);
         objectMap.put('F', "NotSet");
         txMgr.commit();
-        Runnable addA = new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    txMgr.begin();
-                    objectMap = db.getMap("obj", Character.class, String.class);
-                    //System.out.println(db.getMap("obj", Character.class, String.class).get('F'));
-                    Thread.sleep(50);
-                    assertEquals("Set", db.getMap("obj", Character.class, String.class).get('F'));
-                    txMgr.commit();
-                } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
-                        | SystemException | ClientTxRolledBackException e) {
-                    e.printStackTrace();
-                    fail();
+        Runnable addA = () -> {
+            try {
+                txMgr.begin();
+                objectMap = db.getMap("obj", Character.class, String.class);
+                //System.out.println(db.getMap("obj", Character.class, String.class).get('F'));
+                Thread.sleep(50);
+                assertEquals("Set", db.getMap("obj", Character.class, String.class).get('F'));
+                txMgr.commit();
+            } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                    | SystemException | ClientTxRolledBackException e) {
+                e.printStackTrace();
+                fail();
 Runtime.getRuntime().halt(-34);
-                    executor.shutdownNow();
-                    killProcess.set(true);
-                    e.printStackTrace();
-                    throw new RuntimeException();
-                } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();};
-            }
+                executor.shutdownNow();
+                killProcess.set(true);
+                e.printStackTrace();
+                throw new RuntimeException();
+            } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();}
         };
-        Runnable addB = new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    txMgr.begin();
-                    objectMap = db.getMap("obj", Character.class, String.class);
-                    objectMap.replace('F', "Set");
-                    txMgr.commit();
-                    Thread.sleep(5);
-                } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
-                        | SystemException | ClientTxRolledBackException e) {
-                    e.printStackTrace();
-                    fail();
+        Runnable addB = () -> {
+            try {
+                txMgr.begin();
+                objectMap = db.getMap("obj", Character.class, String.class);
+                objectMap.replace('F', "Set");
+                txMgr.commit();
+                Thread.sleep(5);
+            } catch (ClientNotInTxException | RollbackException | IllegalStateException | NotSupportedException
+                    | SystemException | ClientTxRolledBackException e) {
+                e.printStackTrace();
+                fail();
 Runtime.getRuntime().halt(-34);
-                    executor.shutdownNow();
-                    killProcess.set(true);
-                    e.printStackTrace();
-                    throw new RuntimeException();
-                } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();};
-            }
+                executor.shutdownNow();
+                killProcess.set(true);
+                e.printStackTrace();
+                throw new RuntimeException();
+            } catch (Exception e){ e.printStackTrace(); Thread.currentThread().stop();}
         };
         Future<Void> future = (Future<Void>) executor.submit(addA);
         Future<Void> future1 = (Future<Void>) executor.submit(addB);

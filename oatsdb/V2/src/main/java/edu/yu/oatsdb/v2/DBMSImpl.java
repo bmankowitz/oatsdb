@@ -1,6 +1,8 @@
 package edu.yu.oatsdb.v2;
 
 import edu.yu.oatsdb.base.*;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.io.*;
 import java.util.Map;
@@ -8,6 +10,12 @@ import java.util.NoSuchElementException;
 
 public enum DBMSImpl implements DBMS, ConfigurableDBMS, ConfigurablePersistentDBMS {
     Instance;
+    DBMSImpl(){
+        Logger logger = LogManager.getLogger(DBMSImpl.class);
+        if(Globals.log) logger.info("Starting to read stored data");
+        Globals.readStorage();
+        if(Globals.log) logger.info("Finished reading storage");
+    }
 
     @SuppressWarnings("unchecked")
     public <K, V> Map<K, V> getMap(String name, Class<K> keyClass, Class<V> valueClass) {
@@ -27,7 +35,7 @@ public enum DBMSImpl implements DBMS, ConfigurableDBMS, ConfigurablePersistentDB
         }
         //ensure this name exists
         if(!Globals.alreadyExists(name)){
-            throw new NoSuchElementException("Unable to locate map with that name");
+            throw new NoSuchElementException("Unable to locate map with name: "+ name);
         }
 
         //ensure classes match
@@ -36,6 +44,9 @@ public enum DBMSImpl implements DBMS, ConfigurableDBMS, ConfigurablePersistentDB
             throw new ClassCastException("Tried to get map with different classes than on file");
         }
         //ensure serializable
+        if(!Serializable.class.isAssignableFrom(keyClass))
+            throw new IllegalArgumentException("Key class is not serializable");
+
         if(!Serializable.class.isAssignableFrom(valueClass))
             throw new IllegalArgumentException("Value class is not serializable");
 
@@ -64,6 +75,9 @@ public enum DBMSImpl implements DBMS, ConfigurableDBMS, ConfigurablePersistentDB
             throw new IllegalArgumentException("Key/value class cannot be null");
         }
         //ensure serializable
+        if(!Serializable.class.isAssignableFrom(keyClass))
+            throw new IllegalArgumentException("Key class is not serializable");
+
         if(!Serializable.class.isAssignableFrom(valueClass))
             throw new IllegalArgumentException("Value class is not serializable");
 

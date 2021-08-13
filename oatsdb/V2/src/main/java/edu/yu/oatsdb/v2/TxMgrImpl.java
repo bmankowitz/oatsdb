@@ -6,7 +6,6 @@ import edu.yu.oatsdb.base.SystemException;
 import edu.yu.oatsdb.base.Tx;
 import edu.yu.oatsdb.base.TxMgr;
 import edu.yu.oatsdb.base.TxStatus;
-import edu.yu.oatsdb.v2.Globals;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -24,7 +23,7 @@ public enum TxMgrImpl implements TxMgr {
             e.printStackTrace();
             throw e;
         }
-        final TxImpl newTx = new TxImpl(Thread.currentThread(), Globals.txIdGenerator.getAndIncrement());
+        final TxImpl newTx = new TxImpl(Globals.txIdGenerator.getAndIncrement());
         Globals.threadTxMap.put(Thread.currentThread(), newTx);
 
         newTx.setStatus(TxStatus.ACTIVE);
@@ -41,6 +40,8 @@ public enum TxMgrImpl implements TxMgr {
         if(!Globals.threadTxMap.containsKey(Thread.currentThread())) {
             throw new IllegalStateException("This thread is not in a transaction");
         }
+        if(Globals.threadTxMap.get(Thread.currentThread()).rollingBack()) throw new RollbackException("This thread" +
+                "is not currently in a transaction" + Thread.currentThread());
         //set tx status
         currentTx.setStatus(TxStatus.COMMITTING);
         Globals.threadTxMap.replace(Thread.currentThread(), currentTx);
@@ -78,7 +79,7 @@ public enum TxMgrImpl implements TxMgr {
 
     public Tx getTx() throws SystemException {
         if(Globals.threadTxMap.get(Thread.currentThread()) == null){
-            final TxImpl fakeTx = new TxImpl(null, -1 );
+            final TxImpl fakeTx = new TxImpl(-1 );
             fakeTx.setStatus(TxStatus.NO_TRANSACTION);
             return fakeTx;
         }

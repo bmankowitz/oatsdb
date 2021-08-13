@@ -11,25 +11,18 @@ import static org.junit.Assert.*;
 
 public class TxMgrImplTest {
 
-    DBMS db;
+    ConfigurablePersistentDBMS db;
     TxMgr txMgr;
     int i;
 
-    public TxMgrImplTest() throws InstantiationException {
-        //DBMS db = OATSDBType.dbmsFactory(OATSDBType.v1);
-        //TxMgr txMgr = OATSDBType.txMgrFactory(OATSDBType.v1);
-        int i = 1;
-    }
-
     @Before
     public void before() throws InstantiationException {
-        db = OATSDBType.dbmsFactory(OATSDBType.V2);
+        db = (ConfigurablePersistentDBMS) OATSDBType.dbmsFactory(OATSDBType.V2);
         txMgr = OATSDBType.txMgrFactory(OATSDBType.V2);
     }
     @After
     public void after() throws InstantiationException {
-        //db = null;
-        //txMgr = null;
+        db.clear();
     }
 
     //EXPECTED OPERATIONS todo:add more
@@ -164,10 +157,10 @@ public class TxMgrImplTest {
 
     @Deprecated @Test
     public void copyTest(){
-        java.util.HashMap<Integer, Character> hash1 = new java.util.HashMap<Integer, Character>();
+        java.util.HashMap<Integer, Character> hash1 = new java.util.HashMap<>();
         hash1.put(1, 'a');
         hash1.put(2, 'b');
-        java.util.HashMap<Integer, Character> hash2 = new java.util.HashMap<Integer, Character>(hash1);
+        java.util.HashMap<Integer, Character> hash2 = new java.util.HashMap<>(hash1);
         hash1.put(1, 'x');
         System.out.println(hash1);
         System.out.println(hash2);
@@ -184,11 +177,6 @@ public class TxMgrImplTest {
         }
 
 
-//        for(int i = 0; i < 10000000; i++){
-//            if(!h.containsKey(i)){
-//                h.put(i, 1.0);
-//            }
-//        }
         long endTime = System.nanoTime();
 
         long duration = (endTime - startTime);  //divide by 1000000 to get milliseconds.
